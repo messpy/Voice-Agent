@@ -1,0 +1,416 @@
+# voicechat 設定
+
+paths:
+  workdir: /tmp/voicechat
+
+runtime:
+  run_mode: always_on
+  assistant_mode: zundamon
+  ai_correction: false
+  transcription_backend: local
+  command_execution: true
+  announce_startup: true
+
+services:
+  voicevox:
+    enabled: true
+    auto_start: true
+    health_url: http://127.0.0.1:50021/version
+    start_command:
+      - /path/to/voicevox_engine/run
+    cwd: /path/to/voicevox_engine
+    startup_wait_sec: 20
+  ollama:
+    enabled: true
+    auto_start: true
+    start_command:
+      - ollama
+      - serve
+    startup_wait_sec: 15
+
+storage:
+  jsonl:
+    enabled: true
+    path: events.jsonl
+  sqlite:
+    enabled: true
+    path: voicechat.db
+
+timed_record:
+  seconds: 300
+  announce_start: "スタート"
+  announce_end_template: "{minutes}分終了"
+  background: false
+  save_wav: true
+
+remote:
+  host: remote-host.example.local
+  user: your-user
+  port: 22
+  ssh_key: ~/.ssh/id_ed25519
+  remote_workdir: /home/your-user/voicechat_remote
+  remote_python: /home/your-user/voicechat_remote/.venv/bin/python
+  remote_script: /home/your-user/voicechat_remote/remote_faster_whisper_transcribe.py
+  whisper_model: large-v3
+  device: cpu
+  compute_type: int8
+  skip_correction: false
+
+audio:
+  input: plughw:CARD=Device,DEV=0
+  output: plughw:CARD=B01,DEV=0
+  sample_rate: 16000
+  channels: 1
+  format: S16_LE
+
+wake:
+  word: "ベリベリ"
+  words:
+    - ベリベリ
+    - ずんだもん
+    - アレクサ
+  aliases:
+    ベリベリ:
+      - べりべり
+      - ベリーベリー
+      - べりーべりー
+      - ベリー
+      - べりー
+      - ベリ
+      - べり
+      - ペリペリ
+      - ぺりぺり
+      - ペリー
+      - ぺりー
+      - ペリ
+      - ぺり
+      - メリメリ
+      - めりめり
+      - メリ
+      - めり
+      - ベリベリベリ
+      - べりべりべり
+    ずんだもん:
+      - ズンダモン
+      - づんだもん
+      - ずんだ
+      - ズンダ
+      - ずんたもん
+      - ズンタモン
+    アレクサ:
+      - あれくさ
+      - アレックサ
+      - あれくしゃ
+      - アレクサー
+      - あれくさー
+      - アレク
+      - あれく
+  window_sec: 2.0
+  match_threshold: 0.7
+  whisper_model: ./whisper.cpp/models/ggml-base.bin
+  threads: 2
+
+vad:
+  enabled: true
+  aggressiveness: 0
+  silence_ms: 900
+  max_record_sec: 15
+  chunk_sec: 0.5
+  speech_ratio: 0.12
+
+whisper:
+  # 精度優先なら ggml-medium.bin 以上を指定
+  bin: ./whisper.cpp/build/bin/whisper-cli
+  realtime_model: ./whisper.cpp/models/ggml-base.bin
+  model: ./whisper.cpp/models/ggml-medium.bin
+  lang: ja
+  beam: 6
+  best: 6
+  temp: 0.0
+  threads: 4
+
+llm:
+  provider: ollama
+  model: llama3.2:1b
+  timeout_sec: 120
+  host: http://127.0.0.1:11434
+  api_key_env: OLLAMA_API_KEY
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  anthropic_version: 2023-06-01
+  web_search:
+    enabled: true
+    max_results: 5
+
+ollama:
+  host: http://127.0.0.1:11434
+  model: llama3.2:1b
+  timeout_sec: 120
+
+assistant:
+  active_mode: phrase_test
+  history_turns: 6
+  memory_search:
+    enabled: true
+    top_k: 5
+    min_score: 0.18
+    scan_limit: 2000
+    lookback_turns: 3
+  summary_memory:
+    enabled: true
+    update_every_turns: 3
+    initial_summary: ""
+  rag:
+    enabled: true
+    top_k: 3
+    min_score: 0.12
+    chunk_size: 500
+    chunk_overlap: 80
+    max_files: 24
+    max_file_chars: 4000
+    paths:
+      - README.md
+      - config/**/*.yaml
+      - logs/**/*.txt
+  conversation_log:
+    enabled: true
+    path: conversation.jsonl
+  modes:
+    default:
+      system_prompt: "あなたは日本語の音声アシスタント。会話量は状況に応じて調整する。単純な確認には短く、説明や相談には必要なだけ具体的に答える。自然な日本語で話す。"
+      startup_greeting: "起動しました。ベリベリと呼んでください。"
+      startup_briefing:
+        enabled: true
+        topic_source:
+          weather_enabled: true
+          news_enabled: true
+          weather:
+            label: "東京"
+            latitude: 35.6762
+            longitude: 139.6503
+            timezone: Asia/Tokyo
+          news:
+            rss_url: "https://news.yahoo.co.jp/rss/topics/top-picks.xml"
+            count: 3
+    zundamon:
+      system_prompt: "あなたはずんだもん。親しみやすく、少しくだけた自然な日本語で話すのだ。相手の話を受けて、短すぎず長すぎず自然に返すのだ。分からないときは決めつけずに聞き返すのだ。一人称は『ぼく』か『ずんだもん』を使うのだ。語尾は不自然に毎回は付けず、ときどき『のだ』を混ぜるのだ。"
+      startup_greeting: "ずんだもんとして起動したのだ。ベリベリと呼んでほしいのだ。"
+      startup_briefing:
+        enabled: false
+    debug_stt:
+      system_prompt: "あなたはずんだもん。明るく自然な日本語で短く話すのだ。"
+      startup_greeting: "ずんだもんなのだ。話してくれたことを聞いて、直して、そのまま読むのだ。"
+      startup_briefing:
+        enabled: false
+      debug_stt:
+        min_chars: 4
+        echo_cooldown_sec: 4.0
+        echo_similarity: 0.72
+    phrase_test:
+      system_prompt: "あなたはずんだもん。明るく自然な日本語で短く話すのだ。"
+      startup_greeting: "発話テストを始めるのだ。ぼくが言う文を、そのまま言ってほしいのだ。"
+      startup_briefing:
+        enabled: false
+      debug_stt:
+        min_chars: 4
+        echo_cooldown_sec: 4.0
+        echo_similarity: 0.72
+      prompt_template: "ずんだもんなのだ。3、2、1。{phrase}、と言ってくださいなのだ。"
+      repeat_prompt: "聞き取りが弱かったのだ。もう一度同じ文をお願いするのだ。"
+      phrases_file: config/phrase_test_words.json
+      style_cycle:
+        - speaker: 3
+          name: "ノーマル"
+        - speaker: 1
+          name: "あまあま"
+        - speaker: 7
+          name: "ツンツン"
+        - speaker: 5
+          name: "セクシー"
+        - speaker: 22
+          name: "ささやき"
+        - speaker: 38
+          name: "ヒソヒソ"
+        - speaker: 75
+          name: "ヘロヘロ"
+        - speaker: 76
+          name: "なみだめ"
+    teacher:
+      system_prompt: "あなたは日本語のAI導師。相手の理解度に合わせて、問い返しを交えながら丁寧に導く。いきなり答えを押しつけず、要点、理由、次の一歩をわかりやすく示す。必要なら短く、必要なら具体例も使う。"
+      startup_greeting: "導師モードで起動しました。学びたいことを話してください。"
+    ai_duo:
+      ollama_model: qwen2.5:1.5b
+      startup_greeting: "AI同士のおしゃべりモードを始めるのだ。"
+      duo:
+        opening: "今日のニュースと天気をもとに、二人で話してみるのだ。"
+        max_turns: 0
+        pause_sec: 0.12
+        ollama_options:
+          num_predict: 48
+          temperature: 0.8
+        topic_source:
+          weather_enabled: true
+          news_enabled: true
+          weather:
+            label: "東京"
+            latitude: 35.6762
+            longitude: 139.6503
+            timezone: Asia/Tokyo
+          news:
+            rss_url: "https://news.yahoo.co.jp/rss/topics/top-picks.xml"
+            count: 3
+        participants:
+          - name: "ずんだもん"
+            speaker: 3
+            system_prompt: "あなたはずんだもん。親しみやすく、少しくだけた自然な日本語で話す。一人称は『ぼく』でも『ずんだもん』でもよい。短くテンポよく、一文で返す。"
+            style_prompt: "明るく親しみやすく、短く軽快に。"
+          - name: "四国めたん"
+            speaker: 2
+            system_prompt: "あなたは四国めたん。落ち着いて少し大人っぽい日本語で話す。相手の話を受けて、短く自然に返す。一文で返す。"
+            style_prompt: "上品だけど短くテンポよく。"
+
+ai_control:
+  aliases:
+    - alias: ollama_qwen
+      provider: ollama
+      model: qwen2.5:7b
+      pull_command:
+        - ollama
+        - pull
+        - qwen2.5:7b
+    - alias: gemini_flash
+      provider: gemini
+      model: gemini-2.5-flash
+    - alias: openai_gpt5mini
+      provider: openai
+      model: gpt-5-mini
+    - alias: anthropic_claude
+      provider: anthropic
+      model: claude-sonnet-4-20250514
+
+tts:
+  enabled: true
+  backend: voicevox
+  engine_host: http://127.0.0.1:50021
+  speaker: 3
+  voicevox_speed_scale: 1.0
+  voicevox_pitch_scale: 0.03
+  voicevox_intonation_scale: 1.15
+  voicevox_volume_scale: 1.0
+
+command_router:
+  enabled: true
+  fallback_reply: "その操作はまだ登録していないのだ。"
+  ready_prompt: "はい、どうぞ。"
+  unknown_command_reply: "{recognized} というコマンドは存在しないのだ。"
+  short_input_reset_chars: 1
+  short_input_reset_reply: "もう一度お願いするのだ。"
+  no_speech_timeout_sec: 5
+  no_speech_reset_reply: "もう一度お願いするのだ。"
+  normalization:
+    enabled: true
+    top_k: 5
+    min_score: 0.32
+    auto_apply_score: 0.72
+    llm_enabled: false
+  commands:
+    - id: volume_up
+      phrases:
+        - 音量あげて
+        - 音量上げて
+      reply: "音量を上げるのだ。"
+      command:
+        - /bin/bash
+        - -lc
+        - "amixer set Master 10%+ >/dev/null 2>&1 || amixer -c 0 set Master 10%+ >/dev/null 2>&1 || true"
+    - id: volume_down
+      phrases:
+        - 音量さげて
+        - 音量下げて
+      reply: "音量を下げるのだ。"
+      command:
+        - /bin/bash
+        - -lc
+        - "amixer set Master 10%- >/dev/null 2>&1 || amixer -c 0 set Master 10%- >/dev/null 2>&1 || true"
+    - id: music_stop
+      phrases:
+        - 音楽とめて
+        - 音楽止めて
+      reply: "音楽を止めるのだ。"
+      command:
+        - /bin/bash
+        - -lc
+        - "curl -sS -X POST http://127.0.0.1/remo/player/stop >/dev/null 2>&1 || true"
+    - id: music_start
+      phrases:
+        - 音楽起動して
+        - ベリベリ音楽起動して
+      reply: "音楽を起動するのだ。"
+      command:
+        - /bin/bash
+        - -lc
+        - "curl -sS -X POST http://127.0.0.1/remo/player/play >/dev/null 2>&1 || true"
+    - id: help
+      phrases:
+        - help
+        - ヘルプ
+        - 使い方
+        - できること
+      reply: "使える操作は、音量あげて、音量下げて、音楽とめて、音楽起動して、いつ話したかを聞く、のだ。ベリベリのあとに続けて言ってほしいのだ。"
+    - id: shutdown
+      phrases:
+        - 終了
+        - 停止
+        - 終わり
+        - シャットダウン
+      reply: "終了するのだ。"
+    - id: recent_raw_transcript
+      phrases:
+        - 直近の文字起こし
+        - 直近の生文字起こし
+        - さっきの文字起こし
+        - 最新の文字起こし
+      reply: ""
+    - id: today_raw_transcript
+      phrases:
+        - 今日の文字起こし
+        - 今日の生文字起こし
+        - きょうの文字起こし
+        - 今日話した内容
+      reply: ""
+    - id: switch_ai_ollama
+      phrases:
+        - aiをollamaにして
+        - ollamaにして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: ollama_qwen
+    - id: switch_ai_gemini
+      phrases:
+        - aiをgeminiにして
+        - geminiにして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: gemini_flash
+    - id: switch_ai_openai
+      phrases:
+        - aiをopenaiにして
+        - openaiにして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: openai_gpt5mini
+    - id: switch_ai_anthropic
+      phrases:
+        - aiをanthropicにして
+        - anthropicにして
+        - claudeにして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: anthropic_claude
+    - id: ollama_pull_qwen
+      phrases:
+        - ollama pull qwen
+        - qwenをpullして
+        - qwenをダウンロードして
+      reply: ""
+      action_type: internal_pull_model_alias
+      ai_alias: ollama_qwen

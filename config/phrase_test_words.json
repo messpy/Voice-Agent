@@ -1,0 +1,29 @@
+{
+  "phrases": [
+    {
+      "id": "wake_only",
+      "text": "ベリベリ",
+      "note": "ウェイクワード単体"
+    },
+    {
+      "id": "name_only",
+      "text": "ずんだもん",
+      "note": "固有名詞"
+    },
+    {
+      "id": "volume_up",
+      "text": "音量あげて",
+      "note": "短い操作命令"
+    },
+    {
+      "id": "music_stop",
+      "text": "音楽とめて",
+      "note": "音量との混線確認"
+    },
+    {
+      "id": "wake_music_start",
+      "text": "ベリベリ音楽起動して",
+      "note": "ウェイクワード付き複合命令"
+    }
+  ]
+}

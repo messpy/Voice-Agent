@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+
+# Runtime outputs
+logs/
+*.log
+*.wav
+*.db
+*.db-shm
+*.db-wal
+*.jsonl
+config/config.yaml
+config/config.local.yaml
+
+# Local diagnostics
+audio_check.txt
+audio_diag.txt
+diag.txt
+out.txt
+
+# Runtime state and temporary artifacts
+runtime_state.json
+
+# Local speech assets and extracted binaries
+piper/
+piper_tts/
+piper_bin/
+piper_tts_new/
+vosk-model-ja
+
+# Large model archives and binaries
+*.onnx
+*.ort
+*.tar.gz

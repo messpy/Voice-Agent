@@ -1,0 +1,39 @@
+[meta]
+name = "whisper.cpp bench (record->play->transcribe->rate)"
+note = "録音10秒1回。各パラメータを2回ずつ同一WAVで実行して評価。TEXTは transcript(txt) のみ。"
+
+[audio]
+# arecord のデバイス。デフォルトでOK。例: "hw:2,0"
+in_dev = "default"
+# aplay のデバイス。デフォルトでOK。例: "plughw:3,0"
+out_dev = "default"
+rate = 16000
+channels = 1
+seconds = 10
+
+[whisper]
+lang = "ja"
+threads = 4
+# temperature=0 のときは beam search を使う（best は無視）
+# temperature>0 のときは sampling を使う（best-of を使う / beam は 1 固定）
+print_timestamps = false
+
+# パラメータセット（ここは固定でいいと言ってたので固定値）
+# ただし「壊れない」組み合わせにしてある（temp=0 のとき best は使わない）
+[[params]]
+id = "P1"
+beam = 5
+best = 5
+temp = 0.0
+
+[[params]]
+id = "P2"
+beam = 1
+best = 1
+temp = 0.0
+
+[[params]]
+id = "P3"
+beam = 5
+best = 1
+temp = 0.0
