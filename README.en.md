@@ -140,6 +140,9 @@ Define runners under `command_router.action_runners`.
 Each command can then carry only `action_type`, `action_name`, and `args`.
 For `external_cli`, the runner receives JSON on stdin and returns JSON on stdout.
 
+The recommended shape is to keep the external backend in a sibling project such as `voicechat-actions`.
+That backend can own `timer`, `alarm`, `light`, `music`, and `audio` implementations while `voicechat` stays focused on listening and routing.
+
 ## LLM providers
 
 The project can switch between multiple providers for transcript correction and assistant replies.

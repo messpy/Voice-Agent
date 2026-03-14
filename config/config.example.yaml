@@ -310,23 +310,63 @@ command_router:
     external_cli:
       command:
         - python3
-        - /path/to/external_repo/action_bridge.py
+        - -m
+        - voicechat_actions.bridge
+      cwd: /path/to/voicechat-actions
   dynamic_patterns:
     - id: volume_set_percent
       pattern: "音量を(?P<value>\\d{1,3})%にして"
       reply: "音量を{volume_percent}%にするのだ。"
       action_type: external_cli
       action_name: audio.volume_set
-      number_group: value
-      number_scale: direct_percent
+      captures:
+        value:
+          target: volume_percent
+          type: direct_percent
+          min: 0
+          max: 100
       args: {}
     - id: volume_set_level
       pattern: "音量を(?P<value>\\d{1,2})にして"
       reply: "音量を{volume_percent}%にするのだ。"
       action_type: external_cli
       action_name: audio.volume_set
-      number_group: value
-      number_scale: times_ten
+      captures:
+        value:
+          target: volume_percent
+          type: times_ten
+          min: 0
+          max: 100
+      args: {}
+    - id: timer_set_minutes
+      pattern: "(?P<minutes>\\d{1,3})分タイマー"
+      reply: "{minutes}分タイマーをセットするのだ。"
+      action_type: external_cli
+      action_name: timer.set
+      captures:
+        minutes:
+          target: minutes
+          type: int
+          min: 1
+          max: 1440
+      args: {}
+    - id: alarm_set_hm
+      pattern: "(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?に(?:起こして|アラーム(?:を)?セットして)"
+      reply: "{hour}時{minute}分にアラームをセットするのだ。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+        minute:
+          target: minute
+          type: int
+          min: 0
+          max: 59
+          default: 0
       args: {}
   normalization:
     enabled: true
@@ -369,6 +409,56 @@ command_router:
       action_type: external_cli
       action_name: music.play
       args: {}
+    - id: timer_cancel
+      phrases:
+        - タイマー止めて
+        - タイマー消して
+      reply: ""
+      action_type: external_cli
+      action_name: timer.cancel
+      args: {}
+    - id: timer_status
+      phrases:
+        - タイマーどれぐらい
+        - タイマーあとどれぐらい
+      reply: ""
+      action_type: external_cli
+      action_name: timer.status
+      args: {}
+    - id: alarm_cancel
+      phrases:
+        - アラーム止めて
+        - アラーム消して
+      reply: ""
+      action_type: external_cli
+      action_name: alarm.cancel
+      args: {}
+    - id: alarm_status
+      phrases:
+        - アラームどうなってる
+        - 次のアラーム
+      reply: ""
+      action_type: external_cli
+      action_name: alarm.status
+      args: {}
+    - id: light_on
+      phrases:
+        - 電気つけて
+        - ライトつけて
+      reply: "電気をつけるのだ。"
+      action_type: external_cli
+      action_name: light.on
+      args:
+        target: main
+    - id: light_off
+      phrases:
+        - 電気消して
+        - ライト消して
+      reply: "電気を消すのだ。"
+      action_type: external_cli
+      action_name: light.off
+      args:
+        target: main
     - id: help
       phrases:
         - help

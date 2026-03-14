@@ -989,6 +989,38 @@ def compact_text(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def coerce_dynamic_capture(raw_value: str | None, spec: dict | str | None) -> object:
+    if isinstance(spec, str):
+        spec = {"target": spec}
+    spec = spec or {}
+    if raw_value in (None, ""):
+        return spec.get("default")
+    cast = str(spec.get("type", "str")).strip()
+    if cast == "int":
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = spec.get("default")
+    elif cast == "times_ten":
+        try:
+            value = int(raw_value) * 10
+        except ValueError:
+            value = spec.get("default")
+    elif cast == "direct_percent":
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = spec.get("default")
+    else:
+        value = raw_value
+    if isinstance(value, int):
+        if "min" in spec:
+            value = max(int(spec["min"]), value)
+        if "max" in spec:
+            value = min(int(spec["max"]), value)
+    return value
+
+
 def match_dynamic_command(text: str, command_router_cfg: dict) -> dict | None:
     body = compact_text(text).lower()
     if not body:
@@ -1007,17 +1039,21 @@ def match_dynamic_command(text: str, command_router_cfg: dict) -> dict | None:
             continue
         command = dict(item)
         args = dict(command.get("args", {})) if isinstance(command.get("args", {}), dict) else {}
-        group_name = str(item.get("number_group", "value")).strip() or "value"
-        raw_value = matched.groupdict().get(group_name)
-        if raw_value is not None:
-            try:
-                num = int(raw_value)
-            except ValueError:
-                num = None
-            if num is not None:
-                scale = str(item.get("number_scale", "direct_percent")).strip()
-                volume_percent = num * 10 if scale == "times_ten" else num
-                args["volume_percent"] = max(0, min(100, volume_percent))
+        captures = item.get("captures", {})
+        if isinstance(captures, dict) and captures:
+            for group_name, spec in captures.items():
+                target = spec.get("target", group_name) if isinstance(spec, dict) else str(spec)
+                value = coerce_dynamic_capture(matched.groupdict().get(group_name), spec)
+                if target and value is not None:
+                    args[str(target)] = value
+        else:
+            group_name = str(item.get("number_group", "value")).strip() or "value"
+            raw_value = matched.groupdict().get(group_name)
+            scale = str(item.get("number_scale", "direct_percent")).strip()
+            spec = {"target": "value", "type": scale, "min": item.get("min"), "max": item.get("max")}
+            value = coerce_dynamic_capture(raw_value, spec)
+            if value is not None:
+                args["value"] = value
         command["args"] = args
         return command
     return None

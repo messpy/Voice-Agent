@@ -157,6 +157,9 @@ cd <repo-root>
 `command_router.action_runners` に runner を定義し、各コマンドは `action_type`, `action_name`, `args` だけを持ちます。
 `external_cli` では runner に JSON を stdin で渡し、JSON を stdout で返す前提です。
 
+推奨構成として、外部 backend は sibling project の `voicechat-actions` に分離できます。
+`timer`, `alarm`, `light`, `music`, `audio` などの実装をそちらへ寄せると、`voicechat` 本体は聞き取りと判定に集中できます。
+
 ## STT の使い分け
 
 現在の `always_on` 系では、ローカル認識時に 2 段で使い分けます。
