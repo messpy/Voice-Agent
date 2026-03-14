@@ -989,6 +989,53 @@ def compact_text(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def match_dynamic_command(text: str, command_router_cfg: dict) -> dict | None:
+    body = compact_text(text).lower()
+    if not body:
+        return None
+    patterns = command_router_cfg.get("dynamic_patterns", [])
+    if not isinstance(patterns, list):
+        return None
+    for item in patterns:
+        if not isinstance(item, dict):
+            continue
+        pattern = str(item.get("pattern", "")).strip()
+        if not pattern:
+            continue
+        matched = re.search(pattern, body)
+        if not matched:
+            continue
+        command = dict(item)
+        args = dict(command.get("args", {})) if isinstance(command.get("args", {}), dict) else {}
+        group_name = str(item.get("number_group", "value")).strip() or "value"
+        raw_value = matched.groupdict().get(group_name)
+        if raw_value is not None:
+            try:
+                num = int(raw_value)
+            except ValueError:
+                num = None
+            if num is not None:
+                scale = str(item.get("number_scale", "direct_percent")).strip()
+                volume_percent = num * 10 if scale == "times_ten" else num
+                args["volume_percent"] = max(0, min(100, volume_percent))
+        command["args"] = args
+        return command
+    return None
+
+
+def render_command_reply(template: str, command_hit: dict) -> str:
+    body = normalize_text(template)
+    if not body:
+        return ""
+    args = command_hit.get("args", {})
+    if not isinstance(args, dict):
+        return body
+    try:
+        return normalize_text(body.format(**args))
+    except Exception:
+        return body
+
+
 def judge_phrase_result(llm_cfg: dict, expected_text: str, recognized_text: str) -> str:
     system_prompt = (
         "あなたは音声認識の評価器。"
@@ -1276,6 +1323,9 @@ def transcribe_audio(
 def match_command(text: str, command_router_cfg: dict) -> dict | None:
     if not command_router_cfg.get("enabled", False):
         return None
+    dynamic_hit = match_dynamic_command(text, command_router_cfg)
+    if dynamic_hit:
+        return dynamic_hit
     body = compact_text(text).lower()
     if not body:
         return None
@@ -2261,7 +2311,7 @@ def main():
                 command_result = {"ok": True, "returncode": 0, "stdout": "", "stderr": "", "internal": True}
             else:
                 command_result = execute_command_action(command_hit, command_router_cfg, command_execution_enabled)
-            reply_text = normalize_text(str(command_hit.get("reply", ""))) or normalize_text(str(command_router_cfg.get("fallback_reply", "")))
+            reply_text = render_command_reply(str(command_hit.get("reply", "")), command_hit) or normalize_text(str(command_router_cfg.get("fallback_reply", "")))
             if internal_reply:
                 reply_text = internal_reply
             elif normalize_text(str(command_result.get("message", ""))):

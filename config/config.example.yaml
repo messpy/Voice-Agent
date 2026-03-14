@@ -311,6 +311,23 @@ command_router:
       command:
         - python3
         - /path/to/external_repo/action_bridge.py
+  dynamic_patterns:
+    - id: volume_set_percent
+      pattern: "音量を(?P<value>\\d{1,3})%にして"
+      reply: "音量を{volume_percent}%にするのだ。"
+      action_type: external_cli
+      action_name: audio.volume_set
+      number_group: value
+      number_scale: direct_percent
+      args: {}
+    - id: volume_set_level
+      pattern: "音量を(?P<value>\\d{1,2})にして"
+      reply: "音量を{volume_percent}%にするのだ。"
+      action_type: external_cli
+      action_name: audio.volume_set
+      number_group: value
+      number_scale: times_ten
+      args: {}
   normalization:
     enabled: true
     top_k: 5
