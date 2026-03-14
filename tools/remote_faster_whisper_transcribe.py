@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from faster_whisper import WhisperModel
-from llm_api import llm_chat
+from src.llm_api import llm_chat
 
 
 def normalize_text(text: str) -> str:

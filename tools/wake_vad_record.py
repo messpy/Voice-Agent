@@ -15,7 +15,7 @@ from pathlib import Path
 import requests
 import webrtcvad
 import yaml
-from llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
+from src.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
