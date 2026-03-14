@@ -63,8 +63,18 @@ audio:
   channels: 1
   format: S16_LE
 
+audio_pipeline:
+  rnnoise:
+    enabled: false
+    command:
+      - /path/to/rnnoise_wrapper
+      - "{input}"
+      - "{output}"
+
 wake:
   word: "ベリベリ"
+  backend: whisper
+  pre_vad_backend: webrtc
   words:
     - ベリベリ
     - ずんだもん
@@ -109,6 +119,15 @@ wake:
   match_threshold: 0.7
   whisper_model: ./whisper.cpp/models/ggml-base.bin
   threads: 2
+  porcupine:
+    access_key_env: PORCUPINE_ACCESS_KEY
+    model_path: ""
+    sensitivity: 0.6
+    sensitivities: {}
+    keyword_paths:
+      ベリベリ: /path/to/beriberi_ja_raspberry-pi.ppn
+      ずんだもん: /path/to/zundamon_ja_raspberry-pi.ppn
+      アレクサ: /path/to/alexa_ja_raspberry-pi.ppn
 
 vad:
   enabled: true
@@ -117,6 +136,10 @@ vad:
   max_record_sec: 15
   chunk_sec: 0.5
   speech_ratio: 0.12
+  silero:
+    threshold: 0.5
+    min_speech_duration_ms: 120
+    min_silence_duration_ms: 150
 
 whisper:
   # 精度優先なら ggml-medium.bin 以上を指定

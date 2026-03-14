@@ -61,12 +61,25 @@
 
 - `wake.whisper_model`
   ウェイクワード専用
+- `wake.backend`
+  `whisper` または `porcupine`
+- `wake.pre_vad_backend`
+  wake 前段の発話検出。`webrtc` または `silero`
 - `whisper.realtime_model`
   コマンド判定などリアルタイム応答用
 - `whisper.model`
   保存用、あとから見る文字起こし用
 
 このため、体感速度は軽量モデル、ログ品質は重めモデルに寄せる。
+
+追加の wake pipeline として、設定次第で次も使える。
+
+- `audio_pipeline.rnnoise`
+  外部コマンドでのノイズ低減
+- `Silero VAD`
+  wake 窓に発話があるかの前段チェック
+- `Porcupine`
+  wake word 専用検出
 
 ### AI 補正
 

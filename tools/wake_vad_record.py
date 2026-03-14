@@ -11,6 +11,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from xml.etree import ElementTree
 from pathlib import Path
+from typing import Any
 
 import requests
 import webrtcvad
@@ -165,6 +166,123 @@ def wav_write_pcm16_mono(dst_wav: Path, pcm_list: list[bytes], sample_rate: int)
         wf.setframerate(sample_rate)
         for chunk in pcm_list:
             wf.writeframes(chunk)
+
+
+def load_wav_pcm16_mono(src_wav: Path) -> tuple[bytes, int]:
+    with wave.open(str(src_wav), "rb") as wf:
+        channels = wf.getnchannels()
+        sample_width = wf.getsampwidth()
+        sample_rate = wf.getframerate()
+        frames = wf.readframes(wf.getnframes())
+    if channels != 1 or sample_width != 2:
+        raise RuntimeError(f"unsupported wav format for wake pipeline: channels={channels} sample_width={sample_width}")
+    return frames, sample_rate
+
+
+def render_command_template(parts: list[object], values: dict[str, str]) -> list[str]:
+    rendered: list[str] = []
+    for part in parts:
+        body = str(part)
+        for key, value in values.items():
+            body = body.replace("{" + key + "}", str(value))
+        rendered.append(body)
+    return rendered
+
+
+def maybe_apply_rnnoise(src_wav: Path, workdir: Path, rnnoise_cfg: dict, *, tag: str) -> Path:
+    if not rnnoise_cfg.get("enabled", False):
+        return src_wav
+    command = [str(part) for part in rnnoise_cfg.get("command", []) if str(part).strip()]
+    if not command:
+        raise RuntimeError("audio_pipeline.rnnoise.enabled=true but command is empty")
+    out_wav = workdir / f"{tag}_rnnoise.wav"
+    cmd = render_command_template(command, {"input": str(src_wav), "output": str(out_wav)})
+    result = run(cmd, capture=True)
+    if result.returncode != 0 or not out_wav.exists() or out_wav.stat().st_size == 0:
+        err = (result.stderr or b"").decode("utf-8", errors="replace") if result.stderr else ""
+        raise RuntimeError(f"rnnoise command failed: {' '.join(cmd)}\n{err}")
+    return out_wav
+
+
+def detect_silero_speech(wav: Path, silero_cfg: dict) -> tuple[bool, dict[str, Any]]:
+    try:
+        from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+    except Exception as exc:
+        raise RuntimeError("silero-vad is not installed. Install extras: uv sync --extra wake") from exc
+
+    model = load_silero_vad()
+    audio = read_audio(str(wav), sampling_rate=16000)
+    timestamps = get_speech_timestamps(
+        audio,
+        model,
+        sampling_rate=16000,
+        threshold=float(silero_cfg.get("threshold", 0.5)),
+        min_speech_duration_ms=int(silero_cfg.get("min_speech_duration_ms", 120)),
+        min_silence_duration_ms=int(silero_cfg.get("min_silence_duration_ms", 150)),
+    )
+    return bool(timestamps), {"segments": len(timestamps)}
+
+
+def detect_porcupine_wake(wav: Path, porcupine_cfg: dict, wake_words: list[str]) -> tuple[bool, str, dict[str, Any]]:
+    try:
+        import pvporcupine
+    except Exception as exc:
+        raise RuntimeError("pvporcupine is not installed. Install extras: uv sync --extra wake") from exc
+
+    access_key_env = str(porcupine_cfg.get("access_key_env", "PORCUPINE_ACCESS_KEY")).strip() or "PORCUPINE_ACCESS_KEY"
+    access_key = os.environ.get(access_key_env, "").strip()
+    if not access_key:
+        raise RuntimeError(f"Porcupine access key env is empty: {access_key_env}")
+
+    keyword_paths_cfg = porcupine_cfg.get("keyword_paths", {})
+    keyword_paths: list[str] = []
+    keyword_labels: list[str] = []
+    for wake_word in wake_words:
+        keyword_path = str(keyword_paths_cfg.get(wake_word, "")).strip()
+        if not keyword_path:
+            continue
+        keyword_path_obj = Path(keyword_path)
+        if not keyword_path_obj.is_absolute():
+            keyword_path_obj = ROOT / keyword_path_obj
+        keyword_paths.append(str(keyword_path_obj))
+        keyword_labels.append(wake_word)
+    if not keyword_paths:
+        raise RuntimeError("wake.backend=porcupine but no keyword_paths were configured")
+
+    sensitivities_cfg = porcupine_cfg.get("sensitivities", {})
+    sensitivities: list[float] = []
+    for wake_word in keyword_labels:
+        sensitivities.append(float(sensitivities_cfg.get(wake_word, porcupine_cfg.get("sensitivity", 0.6))))
+
+    create_kwargs: dict[str, Any] = {
+        "access_key": access_key,
+        "keyword_paths": keyword_paths,
+        "sensitivities": sensitivities,
+    }
+    model_path = str(porcupine_cfg.get("model_path", "")).strip()
+    if model_path:
+        model_path_obj = Path(model_path)
+        if not model_path_obj.is_absolute():
+            model_path_obj = ROOT / model_path_obj
+        create_kwargs["model_path"] = str(model_path_obj)
+
+    porcupine = pvporcupine.create(**create_kwargs)
+    try:
+        pcm_bytes, sample_rate = load_wav_pcm16_mono(wav)
+        if sample_rate != porcupine.sample_rate:
+            raise RuntimeError(f"Porcupine requires {porcupine.sample_rate}Hz audio, got {sample_rate}Hz")
+        frame_len = porcupine.frame_length
+        samples = memoryview(pcm_bytes).cast("h")
+        processed_frames = 0
+        for idx in range(0, len(samples) - frame_len + 1, frame_len):
+            result = porcupine.process(samples[idx : idx + frame_len])
+            processed_frames += 1
+            if result >= 0:
+                matched = keyword_labels[result] if result < len(keyword_labels) else wake_words[0]
+                return True, matched, {"processed_frames": processed_frames}
+        return False, "", {"processed_frames": processed_frames}
+    finally:
+        porcupine.delete()
 
 
 def arecord_chunk_pcm(audio_in: str, sec: float, sample_rate: int) -> bytes:
@@ -1333,10 +1451,15 @@ def transcribe_audio(
     workdir: Path,
     remote_cfg: dict,
     llm_cfg: dict,
+    rnnoise_cfg: dict | None = None,
+    preprocess_tag: str = "",
 ) -> tuple[str, str, float, str]:
+    prepared_wav = wav
+    if rnnoise_cfg:
+        prepared_wav = maybe_apply_rnnoise(wav, workdir, rnnoise_cfg, tag=preprocess_tag or wav.stem)
     if backend == "ssh_remote":
         raw_text, corrected_text, elapsed_sec, model_name = transcribe_remote(
-            wav=wav,
+            wav=prepared_wav,
             workdir=workdir,
             remote_cfg=remote_cfg,
             llm_cfg=llm_cfg,
@@ -1346,7 +1469,7 @@ def transcribe_audio(
     raw_text, elapsed_sec, model_name = transcribe_local(
         whisper_bin=whisper_bin,
         whisper_model=whisper_model,
-        wav=wav,
+        wav=prepared_wav,
         lang=lang,
         threads=threads,
         beam=beam,
@@ -1724,6 +1847,9 @@ def main():
     if event_sqlite_enabled:
         wake_aliases = merge_wake_aliases(wake_aliases, load_recognition_aliases(event_sqlite_path, "wake"))
     window_sec = float(wake_cfg["window_sec"])
+    wake_backend = str(wake_cfg.get("backend", "whisper")).strip() or "whisper"
+    wake_pre_vad_backend = str(wake_cfg.get("pre_vad_backend", "webrtc")).strip() or "webrtc"
+    porcupine_cfg = wake_cfg.get("porcupine", {})
 
     vad_cfg = cfg.get("vad", {})
     vad_enabled = bool(vad_cfg.get("enabled", True))
@@ -1732,6 +1858,9 @@ def main():
     max_record_sec = int(vad_cfg.get("max_record_sec", 20))
     chunk_sec = float(vad_cfg.get("chunk_sec", 1.0))
     speech_ratio = float(vad_cfg.get("speech_ratio", 0.2))
+    silero_cfg = vad_cfg.get("silero", {})
+    audio_pipeline_cfg = cfg.get("audio_pipeline", {})
+    rnnoise_cfg = audio_pipeline_cfg.get("rnnoise", {})
 
     whisper_cfg = cfg["whisper"]
     wbin = Path(os.environ.get("VOICECHAT_WHISPER_BIN", "").strip() or whisper_cfg["bin"])
@@ -1871,6 +2000,8 @@ def main():
     print(f"INFO: wake_word={wake_word}")
     print(f"INFO: wake_words={wake_words}")
     print(f"INFO: wake_model={wake_wmodel}")
+    print(f"INFO: wake_backend={wake_backend}")
+    print(f"INFO: wake_pre_vad_backend={wake_pre_vad_backend}")
     print(f"INFO: stt_backend={transcription_backend}")
     print(f"INFO: whisper_model={wmodel}")
     print(f"INFO: whisper_realtime_model={realtime_wmodel}")
@@ -1892,6 +2023,8 @@ def main():
         "whisper_model": str(wmodel),
         "whisper_realtime_model": str(realtime_wmodel),
         "wake_model": str(wake_wmodel),
+        "wake_backend": wake_backend,
+        "wake_pre_vad_backend": wake_pre_vad_backend,
         "llm_provider": llm_cfg["provider"],
         "llm_model": llm_cfg["model"],
         "tts_enabled": tts_enabled,
@@ -2001,18 +2134,66 @@ def main():
                 pcm = arecord_chunk_pcm(audio_in, window_sec, sr)
                 win_wav = workdir / "wake_window.wav"
                 wav_write_pcm16_mono(win_wav, [pcm], sr)
+                wake_prepared_wav = maybe_apply_rnnoise(win_wav, workdir, rnnoise_cfg, tag="wake_window")
                 wake_started_at = time.time()
-                wake_text = whisper_transcribe_txt(wbin, wake_wmodel, win_wav, lang, wake_threads, beam, best, temp)
+                wake_text = ""
+                wake_matched = False
+                matched_wake_word = ""
+                wake_meta: dict[str, Any] = {}
+
+                if wake_pre_vad_backend == "silero":
+                    has_speech, silero_meta = detect_silero_speech(wake_prepared_wav, silero_cfg)
+                    wake_meta["silero"] = silero_meta
+                    if not has_speech:
+                        wake_elapsed_sec = round(time.time() - wake_started_at, 3)
+                        wake_payload = {
+                            "ts": int(time.time()),
+                            "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "event": "wake_check",
+                            "mode": active_mode,
+                            "backend": "silero_precheck",
+                            "model": str(wake_wmodel),
+                            "recognized": "",
+                            "expected": wake_word,
+                            "wake_words": wake_words,
+                            "elapsed_sec": wake_elapsed_sec,
+                            "wake_word": wake_word,
+                            "matched_wake_word": "",
+                            "wake_window_sec": window_sec,
+                            "wake_threads": wake_threads,
+                            "matched": False,
+                            "speech_detected": False,
+                            "wake_backend": wake_backend,
+                            "pre_vad_backend": wake_pre_vad_backend,
+                            "audio_path": str(wake_prepared_wav),
+                            **wake_meta,
+                        }
+                        append_event_logs(
+                            payload=wake_payload,
+                            event_type="wake_check",
+                            jsonl_enabled=event_jsonl_enabled,
+                            jsonl_path=event_jsonl_path,
+                            sqlite_enabled=event_sqlite_enabled,
+                            sqlite_path=event_sqlite_path,
+                        )
+                        continue
+
+                if wake_backend == "porcupine":
+                    wake_matched, matched_wake_word, porcupine_meta = detect_porcupine_wake(wake_prepared_wav, porcupine_cfg, wake_words)
+                    wake_meta["porcupine"] = porcupine_meta
+                    wake_text = matched_wake_word if wake_matched else ""
+                else:
+                    wake_text = whisper_transcribe_txt(wbin, wake_wmodel, wake_prepared_wav, lang, wake_threads, beam, best, temp)
+                    if wake_text:
+                        print(f"WAKECHK: {wake_text}")
+                    wake_matched, matched_wake_word = contains_any_wake(wake_text, wake_words, wake_aliases)
                 wake_elapsed_sec = round(time.time() - wake_started_at, 3)
-                if wake_text:
-                    print(f"WAKECHK: {wake_text}")
-                wake_matched, matched_wake_word = contains_any_wake(wake_text, wake_words, wake_aliases)
                 wake_payload = {
                     "ts": int(time.time()),
                     "date": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "event": "wake_check",
                     "mode": active_mode,
-                    "backend": "local_wake",
+                    "backend": f"wake_{wake_backend}",
                     "model": str(wake_wmodel),
                     "recognized": wake_text,
                     "expected": wake_word,
@@ -2023,6 +2204,11 @@ def main():
                     "wake_window_sec": window_sec,
                     "wake_threads": wake_threads,
                     "matched": wake_matched,
+                    "speech_detected": True,
+                    "wake_backend": wake_backend,
+                    "pre_vad_backend": wake_pre_vad_backend,
+                    "audio_path": str(wake_prepared_wav),
+                    **wake_meta,
                 }
             append_event_logs(
                 payload=wake_payload,
@@ -2166,6 +2352,8 @@ def main():
                 workdir=workdir,
                 remote_cfg=remote_cfg,
                 llm_cfg=llm_cfg,
+                rnnoise_cfg=rnnoise_cfg,
+                preprocess_tag="command_realtime",
             )
             write_runtime_state(runtime_state_path, {**runtime_state_base, "state": "transcribing_final"})
             final_user_text, final_prefetched_corrected_text, final_transcribe_elapsed_sec, final_transcribe_model = transcribe_audio(
@@ -2181,6 +2369,8 @@ def main():
                 workdir=workdir,
                 remote_cfg=remote_cfg,
                 llm_cfg=llm_cfg,
+                rnnoise_cfg=rnnoise_cfg,
+                preprocess_tag="command_final",
             )
         else:
             write_runtime_state(runtime_state_path, {**runtime_state_base, "state": "transcribing"})
@@ -2197,6 +2387,8 @@ def main():
                 workdir=workdir,
                 remote_cfg=remote_cfg,
                 llm_cfg=llm_cfg,
+                rnnoise_cfg=rnnoise_cfg,
+                preprocess_tag="command_single",
             )
             final_user_text = user_text
             final_prefetched_corrected_text = prefetched_corrected_text

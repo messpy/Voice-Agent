@@ -13,6 +13,12 @@ dependencies = [
     "webrtcvad>=2.0.10",
 ]
 
+[project.optional-dependencies]
+wake = [
+    "pvporcupine",
+    "silero-vad",
+]
+
 [tool.uv.workspace]
 members = [
     "alexa",
