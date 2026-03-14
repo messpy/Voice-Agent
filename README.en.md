@@ -41,6 +41,8 @@ The current main entrypoint is [tools/wake_vad_record.py](tools/wake_vad_record.
   Remote transcription helper
 - [tools/remote_faster_whisper_bench.py](tools/remote_faster_whisper_bench.py)
   Remote model benchmark helper
+- [legacy/](legacy/)
+  Older one-off experimental scripts
 - [docs/architecture.md](docs/architecture.md)
   Japanese architecture note
 - [docs/architecture.en.md](docs/architecture.en.md)
