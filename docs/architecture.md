@@ -35,9 +35,9 @@
 
 - `tools/timed_record_transcribe.py`
   単独実行向けの固定時間録音
-- `tools/remote_faster_whisper_transcribe.py`
+- `tools/remote/faster_whisper_transcribe.py`
   別 PC 側の単発文字起こし
-- `tools/remote_faster_whisper_bench.py`
+- `tools/remote/faster_whisper_bench.py`
   別 PC 側のモデル比較
 
 ## 構成
@@ -175,14 +175,14 @@ IF:
 
 追加した補助スクリプト:
 
-- `tools/show_status.py`
+- `tools/admin/show_status.py`
   実行中状態、最新認識、現在設定の表示
-- `tools/recognition_alias_manager.py`
+- `tools/admin/recognition_alias_manager.py`
   未知コマンド一覧確認、manual alias 追加
 
 ## ドキュメント方針
 
-入口はルートの `README.md` に集約する。
+入口はルートの `README.md` と `voicechat.sh` に集約する。
 技術メモは本ファイルに集約し、古い分割設計書や英語版の重複資料は持たない。
 
 ## 固定時間録音

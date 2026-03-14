@@ -1,91 +1,108 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MIC_CARD="${MIC_CARD:-2}"
-MIC_DEV="plughw:${MIC_CARD},0"
-REC_SEC="${REC_SEC:-5}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 
-WHISPER_BIN="$HOME/voicechat/whisper.cpp/build/bin/whisper-cli"
-WHISPER_MODEL="$HOME/voicechat/whisper.cpp/models/ggml-base.bin"
+if [[ ! -x "$PYTHON" ]]; then
+  echo "NG: python not found: $PYTHON" >&2
+  exit 1
+fi
 
-OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:latest}"
+usage() {
+  cat <<'EOF'
+usage: ./voicechat.sh <command> [args...]
 
-IN_WAV="$HOME/voicechat/in.wav"
-OUT_PREFIX="$HOME/voicechat/out"
-OUT_TXT="$HOME/voicechat/out.txt"
+main:
+  run                 start the main voicechat runtime
+  timed-record        run timed record/transcribe helper
+  status              show runtime status and recent recognition
+  aliases             manage learned aliases
+  memory-search       search recent stored conversation memory
 
-say() {
-  espeak-ng -v ja "$1" --stdout | aplay -q || true
+remote:
+  remote-transcribe   run remote faster-whisper transcription helper
+  remote-bench        benchmark multiple remote faster-whisper models
+
+lab:
+  lab-voice           launch the interactive voice lab
+  lab-zundamon        run the VOICEVOX zundamon style check
+  lab-record          record until silence using VAD
+  lab-quickcheck      quick whisper smoke test
+  lab-quickcheck-cfg  quick whisper smoke test using config.yaml
+  lab-bench           benchmark whisper.cpp parameters
+  lab-bench-rate      benchmark recognition rate presets
+EOF
 }
 
-ollama_chat() {
-  local prompt="$1"
-  local tmp_body
-  tmp_body="$(mktemp)"
-
-  local payload
-  payload="$(python3 - <<'PY' "$OLLAMA_MODEL" "$prompt"
-import json, sys
-model=sys.argv[1]
-prompt=sys.argv[2]
-print(json.dumps({
-  "model": model,
-  "messages": [
-    {"role":"system","content":"あなたは日本語で簡潔に返答する。1〜2文で答える。"},
-    {"role":"user","content": prompt}
-  ],
-  "stream": False
-}, ensure_ascii=False))
-PY
-)"
-
-  local http
-  http="$(curl -sS -o "$tmp_body" -w '%{http_code}' \
-    http://127.0.0.1:11434/api/chat \
-    -H 'Content-Type: application/json' \
-    -d "$payload" || true)"
-
-  if [[ "$http" != "200" ]]; then
-    echo "[OLLAMA] HTTP=$http" >&2
-    echo "[OLLAMA] BODY:" >&2
-    head -c 2000 "$tmp_body" >&2 || true
-    rm -f "$tmp_body"
-    return 1
-  fi
-
-  python3 - <<'PY' "$tmp_body"
-import json, sys, pathlib
-data=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore"))
-print(data["message"]["content"].strip())
-PY
-
-  rm -f "$tmp_body"
+run_module() {
+  local module="$1"
+  shift
+  cd "$ROOT"
+  exec "$PYTHON" -m "$module" "$@"
 }
 
-while true; do
-  echo "[REC] ${REC_SEC}s 話して"
-  arecord -D "$MIC_DEV" -f S16_LE -r 16000 -c 1 -d "$REC_SEC" -t wav "$IN_WAV" >/dev/null 2>&1 || true
+run_script() {
+  local script="$1"
+  shift
+  cd "$ROOT"
+  exec "$PYTHON" "$script" "$@"
+}
 
-  "$WHISPER_BIN" \
-    -m "$WHISPER_MODEL" \
-    -f "$IN_WAV" \
-    -l ja \
-    -nt \
-    -otxt \
-    -of "$OUT_PREFIX" >/dev/null 2>&1 || true
+cmd="${1:-run}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
 
-  USER_TEXT="$(cat "$OUT_TXT" 2>/dev/null || true | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  if [[ -z "$USER_TEXT" ]]; then
-    echo "[STT] empty"
-    continue
-  fi
-
-  echo "[YOU] $USER_TEXT"
-
-  if RESP="$(ollama_chat "$USER_TEXT")"; then
-    echo "[AI ] $RESP"
-    say "$RESP"
-  else
-    say "オラマに接続できませんでした。"
-  fi
-done
+case "$cmd" in
+  run)
+    run_module tools.wake_vad_record "$@"
+    ;;
+  timed-record)
+    run_script tools/timed_record_transcribe.py "$@"
+    ;;
+  status)
+    run_module tools.admin.show_status "$@"
+    ;;
+  aliases)
+    run_module tools.admin.recognition_alias_manager "$@"
+    ;;
+  memory-search)
+    run_module tools.admin.search_memory "$@"
+    ;;
+  remote-transcribe)
+    run_module tools.remote.faster_whisper_transcribe "$@"
+    ;;
+  remote-bench)
+    run_module tools.remote.faster_whisper_bench "$@"
+    ;;
+  lab-voice)
+    run_script tools/lab/voice_lab.py "$@"
+    ;;
+  lab-zundamon)
+    run_module tools.lab.zundamon_style_check "$@"
+    ;;
+  lab-record)
+    run_script tools/lab/record_until_silence.py "$@"
+    ;;
+  lab-quickcheck)
+    run_script tools/lab/whisper_quickcheck.py "$@"
+    ;;
+  lab-quickcheck-cfg)
+    run_module tools.lab.whisper_quickcheck_cfg "$@"
+    ;;
+  lab-bench)
+    run_script tools/lab/whisper_bench.py "$@"
+    ;;
+  lab-bench-rate)
+    run_script tools/lab/whisper_bench_rate.py "$@"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "NG: unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

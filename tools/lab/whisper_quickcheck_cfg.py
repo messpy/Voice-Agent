@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 def die(msg: str, code: int = 1):
     print(msg, file=sys.stderr)

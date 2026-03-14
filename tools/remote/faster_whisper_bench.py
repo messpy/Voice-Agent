@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from remote_faster_whisper_transcribe import transcribe_to_files
+from tools.remote.faster_whisper_transcribe import transcribe_to_files
 
 
 DEFAULT_MODELS = [
