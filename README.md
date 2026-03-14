@@ -125,6 +125,8 @@ Raspberry Pi 側から別 PC に公開鍵認証で入れる必要があります
   `ollama` / `gemini` / `openai` / `anthropic`
 - `runtime.command_execution`
   音声コマンドを実行するか
+- `command_router.action_runners`
+  外部リポジトリとの実行 IF
 - `timed_record.seconds`
   固定録音秒数
 - `storage.jsonl.path`
@@ -142,6 +144,18 @@ cd <repo-root>
 ```
 
 起動時は先に `services.voicevox` と `services.ollama` を確認し、未起動なら `start_command` で自動起動してから本体に入ります。
+
+## コマンド IF
+
+外部リポジトリに機能を分離したい場合は、音声側は次の IF で action を渡します。
+
+- 入力
+  `action_type`, `action_name`, `args`
+- 出力
+  `success`, `message`, `data`
+
+`command_router.action_runners` に runner を定義し、各コマンドは `action_type`, `action_name`, `args` だけを持ちます。
+`external_cli` では runner に JSON を stdin で渡し、JSON を stdout で返す前提です。
 
 ## STT の使い分け
 

@@ -306,6 +306,11 @@ command_router:
   short_input_reset_reply: "もう一度お願いするのだ。"
   no_speech_timeout_sec: 5
   no_speech_reset_reply: "もう一度お願いするのだ。"
+  action_runners:
+    external_cli:
+      command:
+        - python3
+        - /path/to/external_repo/action_bridge.py
   normalization:
     enabled: true
     top_k: 5
@@ -318,37 +323,35 @@ command_router:
         - 音量あげて
         - 音量上げて
       reply: "音量を上げるのだ。"
-      command:
-        - /bin/bash
-        - -lc
-        - "amixer set Master 10%+ >/dev/null 2>&1 || amixer -c 0 set Master 10%+ >/dev/null 2>&1 || true"
+      action_type: external_cli
+      action_name: audio.volume_up
+      args:
+        delta: "10%+"
     - id: volume_down
       phrases:
         - 音量さげて
         - 音量下げて
       reply: "音量を下げるのだ。"
-      command:
-        - /bin/bash
-        - -lc
-        - "amixer set Master 10%- >/dev/null 2>&1 || amixer -c 0 set Master 10%- >/dev/null 2>&1 || true"
+      action_type: external_cli
+      action_name: audio.volume_down
+      args:
+        delta: "10%-"
     - id: music_stop
       phrases:
         - 音楽とめて
         - 音楽止めて
       reply: "音楽を止めるのだ。"
-      command:
-        - /bin/bash
-        - -lc
-        - "curl -sS -X POST http://127.0.0.1/remo/player/stop >/dev/null 2>&1 || true"
+      action_type: external_cli
+      action_name: music.stop
+      args: {}
     - id: music_start
       phrases:
         - 音楽起動して
         - ベリベリ音楽起動して
       reply: "音楽を起動するのだ。"
-      command:
-        - /bin/bash
-        - -lc
-        - "curl -sS -X POST http://127.0.0.1/remo/player/play >/dev/null 2>&1 || true"
+      action_type: external_cli
+      action_name: music.play
+      args: {}
     - id: help
       phrases:
         - help

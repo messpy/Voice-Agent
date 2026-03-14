@@ -109,6 +109,8 @@ Key flags:
   `local` or `ssh_remote`
 - `runtime.command_execution`
   Enable or disable voice command execution
+- `command_router.action_runners`
+  Execution interface for external repositories
 - `timed_record.seconds`
   Fixed recording duration
 - `storage.jsonl.path`
@@ -124,6 +126,19 @@ Main run command:
 cd <repo-root>
 ./.venv/bin/python -m tools.wake_vad_record
 ```
+
+## Command interface
+
+If you want to move command implementations into another repository, the voice side now passes actions through a small interface.
+
+- Input
+  `action_type`, `action_name`, `args`
+- Output
+  `success`, `message`, `data`
+
+Define runners under `command_router.action_runners`.
+Each command can then carry only `action_type`, `action_name`, and `args`.
+For `external_cli`, the runner receives JSON on stdin and returns JSON on stdout.
 
 ## LLM providers
 

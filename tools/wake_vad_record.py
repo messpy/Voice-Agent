@@ -679,6 +679,71 @@ def execute_internal_command(
     return False, llm_cfg, ""
 
 
+def build_action_payload(item: dict) -> dict:
+    args = item.get("args", {})
+    if not isinstance(args, dict):
+        args = {}
+    return {
+        "action_type": normalize_text(str(item.get("action_type", ""))),
+        "action_name": normalize_text(str(item.get("action_name", ""))),
+        "args": args,
+    }
+
+
+def execute_action_runner(
+    item: dict,
+    command_router_cfg: dict,
+    command_execution_enabled: bool,
+) -> dict:
+    payload = build_action_payload(item)
+    action_type = payload["action_type"]
+    if not action_type:
+        return {"ok": False, "returncode": -1, "stdout": "", "stderr": "missing action_type"}
+    runner_cfg = command_router_cfg.get("action_runners", {}).get(action_type, {})
+    if not isinstance(runner_cfg, dict):
+        runner_cfg = {}
+    runner_command = runner_cfg.get("command", [])
+    if not isinstance(runner_command, list) or not runner_command:
+        return {"ok": False, "returncode": -1, "stdout": "", "stderr": f"missing action runner for {action_type}"}
+    if not command_execution_enabled:
+        return {"ok": True, "returncode": 0, "stdout": "", "stderr": "", "skipped": True, "payload": payload}
+    env = os.environ.copy()
+    extra_env = runner_cfg.get("env", {})
+    if isinstance(extra_env, dict):
+        for key, value in extra_env.items():
+            env[str(key)] = str(value)
+    proc = subprocess.run(
+        [str(part) for part in runner_command],
+        input=(json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=str(runner_cfg.get("cwd", "")) or None,
+        env=env,
+        check=False,
+    )
+    stdout_text = (proc.stdout or b"").decode("utf-8", errors="replace")
+    stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace")
+    result = {
+        "ok": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "stdout": stdout_text,
+        "stderr": stderr_text,
+        "payload": payload,
+    }
+    if stdout_text.strip():
+        try:
+            parsed = json.loads(stdout_text)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            result["action_result"] = parsed
+            if "success" in parsed:
+                result["ok"] = bool(parsed.get("success"))
+            if "message" in parsed:
+                result["message"] = normalize_text(str(parsed.get("message", "")))
+    return result
+
+
 def split_text_chunks(text: str, chunk_size: int, overlap: int) -> list[str]:
     body = normalize_text(text)
     if not body:
@@ -1337,7 +1402,10 @@ def normalize_command_text(
     return text, candidates
 
 
-def execute_command_action(item: dict, command_execution_enabled: bool) -> dict:
+def execute_command_action(item: dict, command_router_cfg: dict, command_execution_enabled: bool) -> dict:
+    action_type = normalize_text(str(item.get("action_type", "")))
+    if action_type:
+        return execute_action_runner(item, command_router_cfg, command_execution_enabled)
     command = item.get("command", [])
     if not isinstance(command, list) or not command:
         return {"ok": False, "returncode": -1, "stdout": "", "stderr": "missing command"}
@@ -2192,10 +2260,12 @@ def main():
             if internal_handled:
                 command_result = {"ok": True, "returncode": 0, "stdout": "", "stderr": "", "internal": True}
             else:
-                command_result = execute_command_action(command_hit, command_execution_enabled)
+                command_result = execute_command_action(command_hit, command_router_cfg, command_execution_enabled)
             reply_text = normalize_text(str(command_hit.get("reply", ""))) or normalize_text(str(command_router_cfg.get("fallback_reply", "")))
             if internal_reply:
                 reply_text = internal_reply
+            elif normalize_text(str(command_result.get("message", ""))):
+                reply_text = normalize_text(str(command_result.get("message", "")))
             if command_hit.get("id") == "recent_raw_transcript":
                 reply_text = fetch_recent_raw_transcript(event_sqlite_path) or "まだ生文字起こしの記録がないのだ。"
             elif command_hit.get("id") == "today_raw_transcript":
