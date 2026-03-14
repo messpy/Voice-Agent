@@ -111,22 +111,56 @@
 
 ## 音声コマンド
 
-`command_router.commands` に以下を持たせる。
+`command_router.commands` は現在、外部 action IF を前提にする。
+
+主な項目:
 
 - `id`
 - `phrases`
 - `reply`
-- `command`
+- `action_type`
+- `action_name`
+- `args`
+
+数値付きコマンドは `command_router.dynamic_patterns` で吸収する。
+
+例:
+
+- `音量を30%にして`
+- `音量を3にして`
+- `5分タイマー`
+- `7時30分にアラームセットして`
 
 動作:
 
 1. 認識結果を受ける
 2. 必要なら AI 補正する
-3. `phrases` と照合する
-4. 一致したら `command` を実行する
-5. 実行結果をイベントとして保存する
+3. `dynamic_patterns` または `phrases` と照合する
+4. 一致したら `action_type/action_name/args` を組み立てる
+5. `command_router.action_runners` で runner を選ぶ
+6. 実行結果をイベントとして保存する
+
+`external_cli` runner では JSON を stdin に渡し、JSON を stdout で受ける。
+
+IF:
+
+- 入力
+  `action_type`, `action_name`, `args`
+- 出力
+  `success`, `message`, `data`
 
 未知コマンドは DB からあとで alias として再学習できる。
+
+## 外部 action backend
+
+推奨構成では、音声認識本体と機能実装を分ける。
+
+- `voicechat`
+  聞き取り、ウェイク、コマンド判定、状態管理
+- `voicechat-actions`
+  `timer`, `alarm`, `light`, `music`, `audio` などの実処理
+
+この分離により、音声側は orchestrator に寄せられる。
 
 ## 起動時依存サービス
 
@@ -145,6 +179,11 @@
   実行中状態、最新認識、現在設定の表示
 - `tools/recognition_alias_manager.py`
   未知コマンド一覧確認、manual alias 追加
+
+## ドキュメント方針
+
+入口はルートの `README.md` に集約する。
+技術メモは本ファイルに集約し、古い分割設計書や英語版の重複資料は持たない。
 
 ## 固定時間録音
 
