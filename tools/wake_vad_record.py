@@ -934,16 +934,35 @@ def check_http_health(url: str):
     resp.raise_for_status()
 
 
+def check_voicevox_health(
+    version_url: str,
+    engine_host: str,
+    speaker: int,
+    sample_text: str = "テスト",
+):
+    check_http_health(version_url)
+    host = engine_host.rstrip("/")
+    resp = requests.post(
+        host + "/audio_query",
+        params={"text": sample_text, "speaker": speaker},
+        timeout=10,
+    )
+    resp.raise_for_status()
+
+
 def ensure_service(
     *,
     name: str,
     service_cfg: dict,
     check_fn,
 ):
+    is_voicevox = name == "voicevox"
     if not service_cfg.get("enabled", False):
         return
     try:
         check_fn()
+        if is_voicevox:
+            print("INFO: voicevox health check ok")
         return
     except Exception as exc:
         if not service_cfg.get("auto_start", False):
@@ -957,12 +976,19 @@ def ensure_service(
             raise RuntimeError(
                 f"{name} not reachable and start_command is not configured: {exc}"
             )
+        if is_voicevox:
+            print(
+                "INFO: voicevox auto_start "
+                f"cmd={' '.join(start_cmd)} cwd={str(service_cfg.get('cwd', '')).strip() or '.'}"
+            )
         start_background_command(start_cmd, cwd=str(service_cfg.get("cwd", "")).strip())
         ok, last_err = wait_for_condition(
             check_fn, float(service_cfg.get("startup_wait_sec", 20))
         )
         if not ok:
             raise RuntimeError(f"{name} failed to start: {last_err or exc}")
+        if is_voicevox:
+            print("INFO: voicevox health check ok after auto_start")
 
 
 def ensure_runtime_services(cfg: dict):
@@ -979,17 +1005,34 @@ def ensure_runtime_services(cfg: dict):
     if tts_enabled:
         voicevox_cfg = dict(services_cfg.get("voicevox", {}))
         if voicevox_cfg:
-            health_url = str(
+            voicevox_health_url = str(
                 voicevox_cfg.get(
                     "health_url",
                     tts_cfg.get("engine_host", "http://127.0.0.1:50021").rstrip("/")
                     + "/version",
                 )
             )
+            print(
+                "INFO: voicevox service "
+                f"auto_start={bool(voicevox_cfg.get('auto_start', False))} "
+                f"health_url={voicevox_health_url} "
+                f"cwd={str(voicevox_cfg.get('cwd', '')).strip() or '.'}"
+            )
+            health_url = str(
+                voicevox_cfg.get(
+                    "health_url",
+                    voicevox_health_url,
+                )
+            )
             ensure_service(
                 name="voicevox",
                 service_cfg=voicevox_cfg,
-                check_fn=lambda: check_http_health(health_url),
+                check_fn=lambda: check_voicevox_health(
+                    health_url,
+                    str(tts_cfg.get("engine_host", "http://127.0.0.1:50021")),
+                    int(tts_cfg.get("speaker", 3)),
+                    str(voicevox_cfg.get("health_text", "テスト")),
+                ),
             )
 
     if llm_cfg.get("provider") == "ollama" and (
@@ -1720,7 +1763,7 @@ def build_help_reply(command_router_cfg: dict) -> str:
     help_cfg = command_router_cfg.get("help", {})
     intro = normalize_text(str(help_cfg.get("intro", "使える操作は次のとおりなのだ。")))
     outro = normalize_text(
-        str(help_cfg.get("outro", "ベリベリのあとに続けて言ってほしいのだ。"))
+        str(help_cfg.get("outro", "スタックチャンのあとに続けて言ってほしいのだ。"))
     )
     separator = normalize_text(str(help_cfg.get("separator", "、")))
     labels: list[str] = []
@@ -1850,6 +1893,71 @@ def choose_command_confirmation_candidate(
         )
     )
     return candidate_item, template.format(primary=best_phrase)
+
+
+def suggest_unknown_command_candidate(
+    text: str,
+    command_router_cfg: dict,
+    llm_cfg: dict,
+) -> tuple[dict | None, str]:
+    normalization_cfg = command_router_cfg.get("normalization", {})
+    if not normalization_cfg.get("enabled", False):
+        return None, ""
+    if not normalization_cfg.get("llm_enabled", True):
+        return None, ""
+
+    command_choices: list[dict[str, str]] = []
+    for item in command_router_cfg.get("commands", []):
+        command_id = normalize_text(str(item.get("id", "")))
+        phrases = [
+            normalize_text(str(phrase))
+            for phrase in item.get("phrases", [])
+            if normalize_text(str(phrase))
+        ]
+        if not command_id or not phrases:
+            continue
+        command_choices.append(
+            {
+                "id": command_id,
+                "phrase": phrases[0],
+                "help_label": normalize_text(str(item.get("help_label", ""))),
+            }
+        )
+    if not command_choices:
+        return None, ""
+
+    system_prompt = (
+        "あなたは音声コマンドの意図判定器。"
+        "入力が既存コマンドのどれに近いかを判断する。"
+        "確信がなければ NONE を返す。"
+        "出力はコマンドの id か phrase か NONE のみ。"
+    )
+    lines = [
+        "次の一覧から1つだけ返す。該当しなければ NONE。",
+        "返答は id か phrase のどちらか1つのみ。",
+    ]
+    for idx, item in enumerate(command_choices, start=1):
+        label = item["phrase"]
+        if item["help_label"] and item["help_label"] != item["phrase"]:
+            label = f"{label} / {item['help_label']}"
+        lines.append(f"{idx}. {label} (id={item['id']})")
+    user_prompt = f"認識結果: {text}\n\n" + "\n".join(lines)
+    try:
+        result = normalize_text(llm_chat(llm_cfg, system_prompt, user_prompt))
+    except Exception:
+        return None, ""
+    if result == "NONE":
+        return None, ""
+
+    for item in command_choices:
+        if result in {normalize_text(item["phrase"]), normalize_text(item["id"])}:
+            command_item = match_command(item["phrase"], command_router_cfg)
+            if command_item:
+                reply = normalize_text(
+                    f"もしかして {item['phrase']} ってことなのだ？ はい なら覚えて実行するのだ。違うなら言い直してほしいのだ。"
+                )
+                return command_item, reply
+    return None, ""
 
 
 def judge_phrase_result(llm_cfg: dict, expected_text: str, recognized_text: str) -> str:
@@ -2020,7 +2128,7 @@ def extract_inline_command_from_wake(
             if token:
                 candidates.append((token, canonical))
 
-    # Prefer the longest alias so "ベリベリベリ" does not get shortened to "ベリベリ".
+    # Prefer the longest alias so a longer wake alias is not shortened to a shorter one.
     candidates.sort(key=lambda item: len(item[0]), reverse=True)
     for token, canonical in candidates:
         if token and body.startswith(token):
@@ -2414,6 +2522,23 @@ def build_command_phrase_index(
                     "reply": reply,
                 }
             )
+
+    for item in command_router_cfg.get("dynamic_patterns", []):
+        command_id = normalize_text(str(item.get("id", "")))
+        pattern = normalize_text(str(item.get("pattern", "")))
+        help_label = normalize_text(str(item.get("help_label", "")))
+        reply = normalize_text(str(item.get("reply", "")))
+        if not command_id or not pattern:
+            continue
+        items.append(
+            {
+                "command_id": command_id,
+                "phrase": help_label or pattern,
+                "match_text": pattern,
+                "reply": reply,
+            }
+        )
+
     return items
 
 
@@ -2473,14 +2598,55 @@ def normalize_command_text(
     if not normalization_cfg.get("llm_enabled", True):
         return text, candidates
 
-    lines = ["候補一覧。次のどれか1つだけをそのまま返す。該当なしなら NONE を返す。"]
-    for idx, item in enumerate(candidates, start=1):
-        lines.append(f"{idx}. {item['phrase']} (score={item['score']})")
+    command_choices: list[dict[str, str]] = []
+    for item in command_router_cfg.get("commands", []):
+        command_id = normalize_text(str(item.get("id", "")))
+        phrases = [
+            normalize_text(str(phrase))
+            for phrase in item.get("phrases", [])
+            if normalize_text(str(phrase))
+        ]
+        if not command_id or not phrases:
+            continue
+        command_choices.append(
+            {
+                "id": command_id,
+                "phrase": phrases[0],
+                "help_label": normalize_text(str(item.get("help_label", ""))),
+            }
+        )
+
+    for item in command_router_cfg.get("dynamic_patterns", []):
+        command_id = normalize_text(str(item.get("id", "")))
+        pattern = normalize_text(str(item.get("pattern", "")))
+        if not command_id or not pattern:
+            continue
+        command_choices.append(
+            {
+                "id": command_id,
+                "phrase": item.get("help_label", "") or f"パターン:{pattern}",
+                "help_label": normalize_text(str(item.get("help_label", ""))),
+            }
+        )
+
+    if not command_choices:
+        return text, candidates
+
+    lines = [
+        "候補一覧。次のどれか1つだけをそのまま返す。該当なしなら NONE を返す。",
+        "返答は候補の phrase か id のどちらか1つのみ。",
+    ]
+    for idx, item in enumerate(command_choices, start=1):
+        label = item["phrase"]
+        if item["help_label"] and item["help_label"] != item["phrase"]:
+            label = f"{label} / {item['help_label']}"
+        lines.append(f"{idx}. {label} (id={item['id']})")
     system_prompt = (
         "あなたは音声コマンド正規化器。"
-        "認識結果を既知コマンド候補へ正規化する。"
+        "認識結果の意図を最も近い既知コマンドへ正規化する。"
+        "語尾や言い換えは気にしない。"
         "候補にない意味を作らない。"
-        "出力は候補の文言そのものか NONE のみ。"
+        "出力は候補の phrase か id、または NONE のみ。"
     )
     user_prompt = f"認識結果: {text}\n\n" + "\n".join(lines)
     try:
@@ -2489,9 +2655,9 @@ def normalize_command_text(
         return text, candidates
     if result == "NONE":
         return text, candidates
-    for item in candidates:
-        if normalize_text(str(item["phrase"])) == result:
-            return result, candidates
+    for item in command_choices:
+        if result in {normalize_text(item["phrase"]), normalize_text(item["id"])}:
+            return item["phrase"], candidates
     return text, candidates
 
 
@@ -2553,6 +2719,13 @@ def build_chat_messages(
     return messages
 
 
+def format_llm_error(exc: Exception) -> str:
+    detail = normalize_text(str(exc))
+    if detail:
+        return f"{exc.__class__.__name__}: {detail}"
+    return exc.__class__.__name__
+
+
 def speak_with_voicevox(
     text: str,
     audio_out: str,
@@ -2566,33 +2739,58 @@ def speak_with_voicevox(
 ):
     out_wav.parent.mkdir(parents=True, exist_ok=True)
     host = engine_host.rstrip("/")
-
-    query_resp = requests.post(
-        host + "/audio_query",
-        params={"text": text, "speaker": speaker},
-        timeout=30,
+    print(
+        "INFO: voicevox request "
+        f"host={host} speaker={speaker} chars={len(text)} out={out_wav.name}"
     )
-    query_resp.raise_for_status()
+
+    try:
+        query_resp = requests.post(
+            host + "/audio_query",
+            params={"text": text, "speaker": speaker},
+            timeout=30,
+        )
+        query_resp.raise_for_status()
+    except Exception as exc:
+        print(
+            "WARN: voicevox audio_query failed "
+            f"host={host} speaker={speaker} out={out_wav.name}: {exc}"
+        )
+        raise
     query = query_resp.json()
     query["speedScale"] = speed_scale
     query["pitchScale"] = pitch_scale
     query["intonationScale"] = intonation_scale
     query["volumeScale"] = volume_scale
 
-    synth_resp = requests.post(
-        host + "/synthesis",
-        params={"speaker": speaker},
-        json=query,
-        timeout=120,
-    )
-    synth_resp.raise_for_status()
+    try:
+        synth_resp = requests.post(
+            host + "/synthesis",
+            params={"speaker": speaker},
+            json=query,
+            timeout=120,
+        )
+        synth_resp.raise_for_status()
+    except Exception as exc:
+        print(
+            "WARN: voicevox synthesis failed "
+            f"host={host} speaker={speaker} out={out_wav.name}: {exc}"
+        )
+        raise
     out_wav.write_bytes(synth_resp.content)
 
     play_cmd = ["aplay"]
     if audio_out:
         play_cmd += ["-D", audio_out]
     play_cmd += [str(out_wav)]
-    run(play_cmd)
+    try:
+        run(play_cmd)
+    except Exception as exc:
+        print(
+            "WARN: voicevox playback failed "
+            f"device={audio_out or 'default'} out={out_wav.name}: {exc}"
+        )
+        raise
 
 
 def run_duo_mode(
@@ -2628,8 +2826,22 @@ def run_duo_mode(
         )
         if style:
             user_prompt += f"\n話し方の条件: {style}"
-        reply = llm_chat(llm_cfg, actor["system_prompt"], user_prompt, llm_options)
-        return reply or "少し考え込んでしまったのだ。"
+        try:
+            reply = llm_chat(llm_cfg, actor["system_prompt"], user_prompt, llm_options)
+        except requests.RequestException as exc:
+            print(f"WARN: ai duo llm request failed: {format_llm_error(exc)}")
+            time.sleep(0.5)
+            try:
+                reply = llm_chat(
+                    llm_cfg, actor["system_prompt"], user_prompt, llm_options
+                )
+            except Exception as retry_exc:
+                print(f"WARN: ai duo llm retry failed: {format_llm_error(retry_exc)}")
+                reply = ""
+        except Exception as exc:
+            print(f"WARN: ai duo llm failed: {format_llm_error(exc)}")
+            reply = ""
+        return reply or "今はうまく返せないのだ。"
 
     print("INFO: AI DUO MODE")
     print(f"INFO: topic={topic}")
@@ -2664,6 +2876,434 @@ def run_duo_mode(
             speak_future.result()
             time.sleep(pause_sec)
             reply = next_reply
+
+
+def run_talk_mode(
+    *,
+    mode_name: str,
+    system_prompt: str,
+    speak,
+    play_effect_fn,
+    llm_cfg: dict,
+    talk_mode_cfg: dict | None,
+    llm_options: dict | None,
+    transcribe_kwargs: dict[str, object],
+    audio_in: str,
+    sr: int,
+    workdir: Path,
+    tts_enabled: bool,
+    history_turns: int,
+    vad: webrtcvad.Vad,
+    vad_enabled: bool,
+    speech_ratio: float,
+    silence_ms: int,
+    chunk_sec: float,
+    record_sec: float = 4.0,
+    pre_record_delay_sec: float = 0.25,
+    turn_effect_cfg: dict | None = None,
+    event_jsonl_enabled: bool = True,
+    event_jsonl_path: Path | None = None,
+    event_sqlite_enabled: bool = False,
+    event_sqlite_path: Path | None = None,
+):
+    def make_talk_fallback_reply(user_text: str, attempt: int) -> str:
+        normalized = normalize_text(user_text)
+        topic = normalized
+        for suffix in ["の話", "について", "のこと"]:
+            if topic.endswith(suffix):
+                topic = topic[: -len(suffix)].strip()
+        if topic.endswith("話") and len(topic) > 1:
+            topic = topic[:-1].strip()
+        if not topic:
+            prompts = [
+                "その話題は気になるのだ。",
+                "その話なら、しっかり受け止めるのだ。",
+                "その件は、落ち着いて聞いているのだ。",
+            ]
+            return prompts[(attempt - 1) % len(prompts)]
+        prompts = [
+            f"{topic}の話は気になるのだ。",
+            f"{topic}のことは、しっかり聞いているのだ。",
+            f"{topic}について、落ち着いて受け止めるのだ。",
+        ]
+        return prompts[(attempt - 1) % len(prompts)]
+
+    def emit_talk_event(event_name: str, **extra: object) -> None:
+        append_event_logs(
+            payload={
+                "ts": int(time.time()),
+                "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "event": event_name,
+                "mode": mode_name,
+                "backend": transcribe_kwargs.get("backend"),
+                "model": transcribe_kwargs.get("model"),
+                **extra,
+            },
+            event_type=event_name,
+            jsonl_enabled=event_jsonl_enabled,
+            jsonl_path=event_jsonl_path or workdir / "events.jsonl",
+            sqlite_enabled=event_sqlite_enabled,
+            sqlite_path=event_sqlite_path or workdir / "voicechat.db",
+        )
+
+    exit_phrases = {
+        "終了",
+        "おわり",
+        "終わり",
+        "やめる",
+        "コマンド",
+        "コマンドモード",
+        "戻る",
+    }
+    exit_phrases_compact = {compact_text(item) for item in exit_phrases}
+    noise_phrases = {"音楽", "(音楽)", "おんがく", "bgm", "music"}
+    history: deque[dict[str, str]] = deque(
+        maxlen=max(2, history_turns * 2) if history_turns > 0 else 12
+    )
+    talk_mode_cfg = dict(talk_mode_cfg or {})
+    llm_options = dict(llm_options or {})
+    talk_llm_cfg = dict(llm_cfg)
+    if talk_llm_cfg.get("provider") == "ollama" and talk_mode_cfg.get("ollama_model"):
+        talk_llm_cfg["model"] = str(talk_mode_cfg["ollama_model"])
+    try:
+        llm_max_wait_sec = max(0.0, float(talk_mode_cfg.get("llm_max_wait_sec", 30)))
+    except (TypeError, ValueError):
+        llm_max_wait_sec = 30.0
+    try:
+        llm_retry_interval_sec = max(
+            0.0, float(talk_mode_cfg.get("llm_retry_interval_sec", 1.0))
+        )
+    except (TypeError, ValueError):
+        llm_retry_interval_sec = 1.0
+    try:
+        llm_max_attempts = int(talk_mode_cfg.get("llm_max_attempts", 0))
+    except (TypeError, ValueError):
+        llm_max_attempts = 0
+    if llm_max_attempts < 0:
+        llm_max_attempts = 0
+    turn_index = 0
+    empty_turns = 0
+    print(f"INFO: TALK MODE ({mode_name})")
+    print(
+        "INFO: talk mode llm wait config "
+        f"max_wait_sec={llm_max_wait_sec:.1f} "
+        f"retry_interval_sec={llm_retry_interval_sec:.1f} "
+        f"max_attempts={llm_max_attempts}"
+    )
+
+    while True:
+        print("INFO: お話入力待ち...")
+        emit_talk_event("talk_listen_start")
+        if tts_enabled:
+            wait_sec = max(0.0, pre_record_delay_sec)
+            print(f"INFO: talk_mode pre_record_wait={wait_sec:.2f}s")
+            emit_talk_event("talk_pre_record_wait", wait_sec=wait_sec)
+            time.sleep(wait_sec)
+
+        wav_path = workdir / f"talk_mode_{int(time.time() * 1000)}.wav"
+        print(f"INFO: talk_mode capture start wav={wav_path.name}")
+        emit_talk_event("talk_capture_start", wav=wav_path.name)
+        all_pcm: list[bytes] = []
+        heard_speech = False
+        silent_chunks = 0
+        need_silent_chunks = max(1, round(silence_ms / max(1.0, chunk_sec * 1000)))
+        started = time.time()
+        while True:
+            pcm = arecord_chunk_pcm(audio_in, chunk_sec, sr)
+            all_pcm.append(pcm)
+            if vad_enabled:
+                speech_frames, total_frames = is_speech_frame(
+                    vad, pcm, sr, frame_ms=30
+                )
+                speaking = (
+                    total_frames > 0
+                    and (speech_frames / total_frames) >= speech_ratio
+                )
+                if speaking:
+                    heard_speech = True
+                    silent_chunks = 0
+                    print("VAD: speech")
+                elif heard_speech:
+                    silent_chunks += 1
+                    print(f"VAD: silence ({silent_chunks}/{need_silent_chunks})")
+                else:
+                    print("VAD: waiting speech")
+
+                if heard_speech and silent_chunks >= need_silent_chunks:
+                    print("INFO: end-of-speech detected")
+                    break
+
+            if (time.time() - started) >= max(1.0, record_sec):
+                print(f"INFO: talk_mode listen timeout reached ({record_sec}s)")
+                break
+
+        wav_write_pcm16_mono(wav_path, all_pcm, sr)
+        print(f"INFO: talk_mode capture done wav={wav_path.name}")
+        emit_talk_event(
+            "talk_capture_done",
+            wav=wav_path.name,
+            heard_speech=heard_speech,
+            chunks=len(all_pcm),
+            timeout_sec=record_sec,
+        )
+
+        raw_text, corrected_text, elapsed_sec, model_name = transcribe_audio(
+            wav=wav_path,
+            **transcribe_kwargs,
+        )
+        if bool(talk_mode_cfg.get("use_corrected_transcript", False)):
+            user_text = normalize_transcript_text(corrected_text or raw_text)
+        else:
+            user_text = normalize_transcript_text(raw_text or corrected_text)
+        emit_talk_event(
+            "talk_transcribe_done",
+            wav=wav_path.name,
+            raw_text=raw_text,
+            corrected_text=corrected_text,
+            recognized=user_text,
+            elapsed_sec=elapsed_sec,
+            model=model_name,
+        )
+        print("===== USER =====")
+        print(user_text if user_text else "(no transcript)")
+        print("================")
+
+        if not user_text:
+            empty_turns += 1
+            emit_talk_event(
+                "talk_turn_empty",
+                wav=wav_path.name,
+                empty_turns=empty_turns,
+            )
+            if empty_turns >= 3:
+                emit_talk_event("talk_timeout", empty_turns=empty_turns)
+                if tts_enabled:
+                    speak("無言が続いたので寝るのだ。", "reply_talk_timeout.wav")
+                return
+            continue
+
+        if normalize_text(user_text).lower() in noise_phrases or compact_text(user_text) in noise_phrases:
+            print(f"INFO: talk mode noise ignored: {user_text}")
+            emit_talk_event("talk_turn_noise", recognized=user_text)
+            continue
+
+        if len(compact_text(user_text)) <= 1:
+            emit_talk_event("talk_turn_too_short", recognized=user_text)
+            continue
+
+        empty_turns = 0
+        if compact_text(user_text) in exit_phrases_compact:
+            emit_talk_event("talk_exit", recognized=user_text)
+            if tts_enabled:
+                speak("お話モードを終わるのだ。", "reply_talk_end.wav")
+            return
+
+        messages = build_chat_messages(
+            system_prompt,
+            list(history),
+            user_text,
+        )
+        reply_text = ""
+        llm_fallback_reason = ""
+        llm_last_error = ""
+        llm_started_at = time.time()
+        llm_deadline = llm_started_at + llm_max_wait_sec
+        llm_attempt = 0
+        while True:
+            now = time.time()
+            if llm_max_attempts > 0 and llm_attempt >= llm_max_attempts:
+                llm_fallback_reason = "max_attempts"
+                print(
+                    "WARN: talk mode llm max attempts reached "
+                    f"attempt={llm_attempt} elapsed_sec={now - llm_started_at:.3f}"
+                )
+                break
+            if now >= llm_deadline:
+                llm_fallback_reason = llm_fallback_reason or "timeout"
+                print(
+                    "WARN: talk mode llm wait deadline reached "
+                    f"attempt={llm_attempt} elapsed_sec={now - llm_started_at:.3f}"
+                )
+                break
+
+            llm_attempt += 1
+            attempt_elapsed_sec = round(now - llm_started_at, 3)
+            print(
+                "INFO: talk mode llm attempt start "
+                f"attempt={llm_attempt} elapsed_sec={attempt_elapsed_sec:.3f}"
+            )
+            emit_talk_event(
+                "talk_llm_attempt",
+                recognized=user_text,
+                attempt=llm_attempt,
+                elapsed_sec=attempt_elapsed_sec,
+                llm_max_wait_sec=llm_max_wait_sec,
+                llm_retry_interval_sec=llm_retry_interval_sec,
+                llm_max_attempts=llm_max_attempts,
+            )
+
+            attempt_llm_cfg = dict(talk_llm_cfg)
+            remaining_sec = max(0.0, llm_deadline - now)
+            if remaining_sec > 0:
+                attempt_llm_cfg["timeout_sec"] = max(
+                    1, min(int(attempt_llm_cfg.get("timeout_sec", 120)), int(math.ceil(remaining_sec)))
+                )
+
+            try:
+                candidate_reply = normalize_text(
+                    llm_chat_messages(attempt_llm_cfg, messages, llm_options)
+                )
+            except requests.RequestException as exc:
+                llm_fallback_reason = "request_exception"
+                llm_last_error = format_llm_error(exc)
+                print(
+                    "WARN: talk mode llm request failed "
+                    f"attempt={llm_attempt} elapsed_sec={attempt_elapsed_sec:.3f} "
+                    f"error={llm_last_error}"
+                )
+                emit_talk_event(
+                    "talk_llm_failure",
+                    recognized=user_text,
+                    attempt=llm_attempt,
+                    elapsed_sec=attempt_elapsed_sec,
+                    fallback_reason=llm_fallback_reason,
+                    error=llm_last_error,
+                )
+            except Exception as exc:
+                llm_fallback_reason = "exception"
+                llm_last_error = format_llm_error(exc)
+                print(
+                    "WARN: talk mode llm failed "
+                    f"attempt={llm_attempt} elapsed_sec={attempt_elapsed_sec:.3f} "
+                    f"error={llm_last_error}"
+                )
+                emit_talk_event(
+                    "talk_llm_failure",
+                    recognized=user_text,
+                    attempt=llm_attempt,
+                    elapsed_sec=attempt_elapsed_sec,
+                    fallback_reason=llm_fallback_reason,
+                    error=llm_last_error,
+                )
+            else:
+                if candidate_reply:
+                    reply_text = candidate_reply
+                    success_elapsed_sec = round(time.time() - llm_started_at, 3)
+                    print(
+                        "INFO: talk mode llm success "
+                        f"attempt={llm_attempt} elapsed_sec={success_elapsed_sec:.3f}"
+                    )
+                    emit_talk_event(
+                        "talk_llm_success",
+                        recognized=user_text,
+                        reply=reply_text,
+                        attempt=llm_attempt,
+                        elapsed_sec=success_elapsed_sec,
+                        fallback_reason="",
+                    )
+                    break
+                llm_fallback_reason = "empty_response"
+                print(
+                    "WARN: talk mode llm empty response "
+                    f"attempt={llm_attempt} elapsed_sec={attempt_elapsed_sec:.3f}"
+                )
+                emit_talk_event(
+                    "talk_llm_empty",
+                    recognized=user_text,
+                    attempt=llm_attempt,
+                    elapsed_sec=attempt_elapsed_sec,
+                    fallback_reason=llm_fallback_reason,
+                )
+
+            now = time.time()
+            if llm_max_attempts > 0 and llm_attempt >= llm_max_attempts:
+                llm_fallback_reason = "max_attempts"
+                print(
+                    "WARN: talk mode llm max attempts reached "
+                    f"attempt={llm_attempt} elapsed_sec={now - llm_started_at:.3f}"
+                )
+                break
+            if now >= llm_deadline:
+                llm_fallback_reason = llm_fallback_reason or "timeout"
+                print(
+                    "WARN: talk mode llm wait deadline reached "
+                    f"attempt={llm_attempt} elapsed_sec={now - llm_started_at:.3f}"
+                )
+                break
+
+            sleep_sec = min(llm_retry_interval_sec, max(0.0, llm_deadline - now))
+            if sleep_sec > 0:
+                print(
+                    "INFO: talk mode llm retry sleep "
+                    f"sleep_sec={sleep_sec:.2f} next_attempt={llm_attempt + 1}"
+                )
+                time.sleep(sleep_sec)
+
+        if not reply_text:
+            final_elapsed_sec = round(time.time() - llm_started_at, 3)
+            fallback_reason = llm_fallback_reason or "timeout"
+            print(
+                "WARN: talk mode llm fallback "
+                f"reason={fallback_reason} attempts={llm_attempt} "
+                f"elapsed_sec={final_elapsed_sec:.3f}"
+            )
+            emit_talk_event(
+                "talk_reply_empty",
+                recognized=user_text,
+                attempt=llm_attempt,
+                elapsed_sec=final_elapsed_sec,
+                fallback_reason=fallback_reason,
+                error=llm_last_error,
+            )
+            fallback_reply = make_talk_fallback_reply(user_text, turn_index + 1)
+            emit_talk_event(
+                "talk_reply_fallback",
+                recognized=user_text,
+                reply=fallback_reply,
+                turn_index=turn_index + 1,
+                attempt=llm_attempt,
+                elapsed_sec=final_elapsed_sec,
+                fallback_reason=fallback_reason,
+                error=llm_last_error,
+            )
+            if tts_enabled:
+                speak(fallback_reply, f"reply_talk_empty_{turn_index + 1}.wav")
+                if play_effect_fn and turn_effect_cfg:
+                    play_effect_fn("ready", turn_effect_cfg)
+            history.append({"role": "user", "content": user_text})
+            history.append({"role": "assistant", "content": fallback_reply})
+            turn_index += 1
+            continue
+
+        print("===== ASSISTANT =====")
+        print(reply_text)
+        print("=====================")
+        emit_talk_event(
+            "talk_reply",
+            recognized=user_text,
+            reply=reply_text,
+            turn_index=turn_index + 1,
+            attempt=llm_attempt,
+            elapsed_sec=round(time.time() - llm_started_at, 3),
+            fallback_reason="",
+        )
+
+        history.append({"role": "user", "content": user_text})
+        history.append({"role": "assistant", "content": reply_text})
+        turn_index += 1
+        if tts_enabled:
+            speak(reply_text, f"reply_talk_{turn_index}.wav")
+            if play_effect_fn and turn_effect_cfg:
+                play_effect_fn("ready", turn_effect_cfg)
+        emit_talk_event(
+            "talk_reply_played",
+            recognized=user_text,
+            reply=reply_text,
+            turn_index=turn_index,
+            attempt=llm_attempt,
+            elapsed_sec=round(time.time() - llm_started_at, 3),
+            fallback_reason="",
+        )
 
 
 def sanity(cfg):
@@ -2893,25 +3533,23 @@ def main():
     command_ready_prompt = normalize_text(
         str(command_router_cfg.get("ready_prompt", "はい、どうぞ。"))
     )
-    unknown_command_reply = normalize_text(
-        str(
-            command_router_cfg.get(
-                "unknown_command_reply",
-                command_router_cfg.get("fallback_reply", "そのコマンドはないのだ。"),
-            )
-        )
-    )
+    unknown_command_reply: str | None = None
+    raw_unknown = command_router_cfg.get("unknown_command_reply") or command_router_cfg.get("fallback_reply", "")
+    if raw_unknown:
+        unknown_command_reply = normalize_text(str(raw_unknown)) or None
     short_input_reset_chars = max(
         0, int(command_router_cfg.get("short_input_reset_chars", 3))
     )
-    short_input_reset_reply = normalize_text(
-        str(
-            command_router_cfg.get(
-                "short_input_reset_reply",
-                "短すぎて分からなかったのだ。もう一度ベリベリからお願いするのだ。",
+    short_input_reset_reply: str | None = None
+    if command_router_cfg.get("short_input_reset_chars", 1) > 1:
+        short_input_reset_reply = normalize_text(
+            str(
+                command_router_cfg.get(
+                    "short_input_reset_reply",
+                    "",
+                )
             )
-        )
-    )
+        ) or None
     no_speech_timeout_sec = max(
         0.0, float(command_router_cfg.get("no_speech_timeout_sec", 5))
     )
@@ -3021,6 +3659,24 @@ def main():
         if not tts_enabled_env
         else tts_enabled_env.lower() in {"1", "true", "yes", "on"}
     )
+    tts_available = tts_enabled
+    services_cfg = cfg.get("services", {})
+    voicevox_cfg = dict(services_cfg.get("voicevox", {}))
+    voicevox_auto_start = bool(voicevox_cfg.get("auto_start", False))
+    voicevox_start_command = [
+        str(part)
+        for part in voicevox_cfg.get("start_command", [])
+        if str(part).strip()
+    ]
+    voicevox_cwd = str(voicevox_cfg.get("cwd", "")).strip()
+    voicevox_health_url = str(
+        voicevox_cfg.get(
+            "health_url",
+            tts_cfg.get("engine_host", "http://127.0.0.1:50021").rstrip("/")
+            + "/version",
+        )
+    )
+    voicevox_startup_wait_sec = float(voicevox_cfg.get("startup_wait_sec", 20))
     vv_host = tts_cfg.get("engine_host", "http://127.0.0.1:50021")
     vv_speaker = int(tts_cfg.get("speaker", 3))
     vv_speed = float(tts_cfg.get("voicevox_speed_scale", 1.0))
@@ -3103,24 +3759,83 @@ def main():
             }
         )
 
-    def speak(text: str, out_name: str, speaker_override: int | None = None):
-        nonlocal last_spoken_at, last_spoken_text
-        out_wav = workdir / out_name
-        if not tts_enabled or not text:
-            return
-        last_spoken_text = normalize_text(text)
-        last_spoken_at = time.time()
-        speak_with_voicevox(
-            text,
-            audio_out,
-            out_wav,
-            vv_host,
-            speaker_override if speaker_override is not None else vv_speaker,
-            vv_speed,
-            vv_pitch,
-            vv_intonation,
-            vv_volume,
+    def restart_voicevox() -> bool:
+        if not voicevox_auto_start:
+            print("INFO: voicevox restart skipped; managed by kennybot-voicevox.service")
+            return False
+        if not voicevox_start_command:
+            print("WARN: voicevox start_command is not configured")
+            return False
+        print(
+            "INFO: voicevox restart "
+            f"cmd={' '.join(voicevox_start_command)} cwd={voicevox_cwd or '.'}"
         )
+        try:
+            start_background_command(voicevox_start_command, cwd=voicevox_cwd)
+        except Exception as exc:
+            print(f"WARN: voicevox start failed: {exc}")
+            return False
+        print(
+            "INFO: voicevox waiting for health "
+            f"url={voicevox_health_url} timeout={voicevox_startup_wait_sec:.1f}s"
+        )
+        ok, last_err = wait_for_condition(
+            lambda: check_voicevox_health(
+                voicevox_health_url,
+                vv_host,
+                vv_speaker,
+                str(voicevox_cfg.get("health_text", "テスト")),
+            ),
+            voicevox_startup_wait_sec,
+        )
+        if not ok:
+            print(f"WARN: voicevox health check failed after restart: {last_err}")
+        else:
+            print(f"INFO: voicevox healthy url={voicevox_health_url}")
+        return ok
+
+    def speak(text: str, out_name: str, speaker_override: int | None = None):
+        nonlocal last_spoken_at, last_spoken_text, tts_available
+        out_wav = workdir / out_name
+        if not tts_available or not text:
+            return
+        try:
+            last_spoken_text = normalize_text(text)
+            last_spoken_at = time.time()
+            speak_with_voicevox(
+                text,
+                audio_out,
+                out_wav,
+                vv_host,
+                speaker_override if speaker_override is not None else vv_speaker,
+                vv_speed,
+                vv_pitch,
+                vv_intonation,
+                vv_volume,
+            )
+        except Exception as exc:
+            print(f"WARN: voicevox tts unavailable: {exc}")
+            if restart_voicevox():
+                try:
+                    print(
+                        "INFO: voicevox retry "
+                        f"host={vv_host} speaker={speaker_override if speaker_override is not None else vv_speaker}"
+                    )
+                    speak_with_voicevox(
+                        text,
+                        audio_out,
+                        out_wav,
+                        vv_host,
+                        speaker_override if speaker_override is not None else vv_speaker,
+                        vv_speed,
+                        vv_pitch,
+                        vv_intonation,
+                        vv_volume,
+                    )
+                    return
+                except Exception as retry_exc:
+                    print(f"WARN: voicevox retry failed: {retry_exc}")
+            print("WARN: voicevox unavailable for now; will retry on next utterance")
 
     def recent_self_echo_similarity(*texts: str) -> float:
         if not last_spoken_text:
@@ -3340,6 +4055,7 @@ def main():
         wake_matched = False
         matched_wake_word = ""
         wake_payload: dict[str, Any] | None = None
+        music_restore_volume: int | None = None
         if active_mode not in {"debug_stt", "phrase_test"}:
             if not command_retry_active:
                 print("INFO: ウェイクワード待機中...")
@@ -3512,20 +4228,33 @@ def main():
                     "audio_path": str(wake_prepared_wav),
                     **wake_meta,
                 }
-            if wake_payload is not None:
-                append_event_logs(
-                    payload=wake_payload,
-                    event_type="wake_check",
-                    jsonl_enabled=event_jsonl_enabled,
-                    jsonl_path=event_jsonl_path,
-                    sqlite_enabled=event_sqlite_enabled,
-                    sqlite_path=event_sqlite_path,
-                )
+                if not wake_matched and is_music_playing():
+                    direct_music_hit = match_command(wake_text, command_router_cfg)
+                    if direct_music_hit and normalize_text(
+                        str(direct_music_hit.get("id", ""))
+                    ) == "music_stop":
+                        print("INFO: music playback shortcut detected: 音楽止めて")
+                        inline_command_text = wake_text
+                        wake_matched = True
+                        matched_wake_word = "music_stop_shortcut"
+                        wake_payload["matched"] = True
+                        wake_payload["matched_wake_word"] = matched_wake_word
+                        wake_payload["music_stop_shortcut"] = True
+                        wake_payload["music_stop_shortcut_text"] = wake_text
+
+                if wake_payload is not None:
+                    append_event_logs(
+                        payload=wake_payload,
+                        event_type="wake_check",
+                        jsonl_enabled=event_jsonl_enabled,
+                        jsonl_path=event_jsonl_path,
+                        sqlite_enabled=event_sqlite_enabled,
+                        sqlite_path=event_sqlite_path,
+                    )
 
                 if not wake_matched:
                     continue
 
-                music_restore_volume: int | None = None
                 if is_music_playing():
                     print("INFO: music playback detected; ducking volume")
                     music_restore_volume = duck_music_volume(10)
@@ -3874,9 +4603,9 @@ def main():
         if not user_text:
             restore_music_volume(music_restore_volume)
             if active_mode == "phrase_test" and tts_enabled:
-                speak(phrase_repeat_prompt, "reply_phrase_retry.wav")
+                pass
             elif tts_enabled and active_mode != "debug_stt":
-                speak("聞き取れませんでした。もう一度お願いします。", "reply_retry.wav")
+                pass
             if active_mode not in {"debug_stt", "phrase_test"}:
                 command_retry_active = True
                 write_runtime_state(
@@ -4075,7 +4804,7 @@ def main():
                 restore_music_volume(music_restore_volume)
                 if short_input_reset_reply and tts_enabled:
                     speak(short_input_reset_reply, "reply_command_retry.wav")
-                    play_effect("ready", ready_effect_cfg)
+                    play_effect("recorded", recorded_effect_cfg)
                 command_retry_active = True
                 write_runtime_state(
                     runtime_state_path,
@@ -4100,6 +4829,130 @@ def main():
                     str(pending_command_confirmation.get("source_text", ""))
                 )
             pending_command_confirmation = None
+            if tts_enabled:
+                play_effect("ready", ready_effect_cfg)
+            if command_hit.get("id") == "talk_mode":
+                now_text = time.strftime("%Y年%m月%d日 %H時%M分")
+                talk_reply_text = (
+                    f"こんにちは、今は{now_text}なのだ。"
+                    "スタックチャンがなんのお話をする？"
+                )
+                append_event_logs(
+                    payload={
+                        "ts": int(time.time()),
+                        "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "event": "command",
+                        "mode": active_mode,
+                        "backend": transcription_backend,
+                        "model": final_transcribe_model,
+                        "recognized": command_input_text,
+                        "raw_user": final_user_text or user_text,
+                        "corrected_user": final_effective_user_text,
+                        "recognized_fast": user_text,
+                        "recognized_final": final_user_text or user_text,
+                        "model_fast": transcribe_model,
+                        "model_final": final_transcribe_model,
+                        "command_input_text": command_input_text,
+                        "command_candidates": command_candidates,
+                        "elapsed_sec": final_transcribe_elapsed_sec
+                        or transcribe_elapsed_sec,
+                        "command_id": command_hit.get("id"),
+                        "command_reply": talk_reply_text,
+                        "command_ok": True,
+                        "command_returncode": 0,
+                        "command_stdout": "",
+                        "command_stderr": "",
+                        "command_skipped": False,
+                        "llm_provider_after": llm_cfg.get("provider"),
+                        "llm_model_after": llm_cfg.get("model"),
+                    },
+                    event_type="command",
+                    jsonl_enabled=event_jsonl_enabled,
+                    jsonl_path=event_jsonl_path,
+                    sqlite_enabled=event_sqlite_enabled,
+                    sqlite_path=event_sqlite_path,
+                )
+                if tts_enabled:
+                    speak(talk_reply_text, "reply_talk_entry.wav")
+                    play_effect("ready", ready_effect_cfg)
+                write_runtime_state(
+                    runtime_state_path,
+                    {
+                        **runtime_state_base,
+                        "state": "talk_mode",
+                        "last_command": "talk_mode",
+                        "recognized_fast": user_text,
+                        "recognized_final": final_user_text or user_text,
+                    },
+                )
+                run_talk_mode(
+                    mode_name=active_mode,
+                    system_prompt=system_prompt,
+                    speak=speak,
+                    play_effect_fn=play_effect,
+                    llm_cfg=llm_cfg,
+                    talk_mode_cfg=command_router_cfg.get("talk_mode", {}),
+                    transcribe_kwargs={
+                        "backend": transcription_backend,
+                        "whisper_bin": wbin,
+                        "whisper_model": wmodel,
+                        "vosk_model": vosk_model,
+                        "lang": lang,
+                        "threads": threads,
+                        "beam": beam,
+                        "best": best,
+                        "temp": temp,
+                        "workdir": workdir,
+                        "remote_cfg": remote_cfg,
+                        "llm_cfg": llm_cfg,
+                        "google_cfg": google_cfg,
+                        "speech_recognition_cfg": speech_recognition_cfg,
+                        "rnnoise_cfg": rnnoise_cfg,
+                        "preprocess_tag": "talk_mode",
+                    },
+                    audio_in=audio_in,
+                    sr=sr,
+                    workdir=workdir,
+                    tts_enabled=tts_enabled,
+                    history_turns=history_turns,
+                    vad=vad,
+                    vad_enabled=vad_enabled,
+                    speech_ratio=speech_ratio,
+                    silence_ms=silence_ms,
+                    chunk_sec=chunk_sec,
+                    llm_options=dict(
+                        command_router_cfg.get("talk_mode", {}).get(
+                            "ollama_options", {}
+                        )
+                    ),
+                    record_sec=float(
+                        command_router_cfg.get("talk_mode", {}).get(
+                            "record_sec", 4.0
+                        )
+                    ),
+                    pre_record_delay_sec=float(
+                        command_router_cfg.get("talk_mode", {}).get(
+                            "pre_record_delay_sec", 0.25
+                        )
+                    ),
+                    turn_effect_cfg=ready_effect_cfg,
+                    event_jsonl_enabled=event_jsonl_enabled,
+                    event_jsonl_path=event_jsonl_path,
+                    event_sqlite_enabled=event_sqlite_enabled,
+                    event_sqlite_path=event_sqlite_path,
+                )
+                restore_music_volume(music_restore_volume)
+                write_runtime_state(
+                    runtime_state_path,
+                    {
+                        **runtime_state_base,
+                        "state": "wake_wait",
+                        "last_command": "talk_mode_end",
+                        "recognized_fast": user_text,
+                        "recognized_final": final_user_text or user_text,
+                    },
+                )
+                continue
             (
                 internal_handled,
                 updated_llm_cfg,
@@ -4207,13 +5060,22 @@ def main():
                 speak(reply_text, "reply_command.wav")
             success_effect_name = normalize_text(
                 str(command_hit.get("success_effect", ""))
-            ) or "ready"
+            )
+            if not success_effect_name:
+                success_effect_name = "recorded"
             success_effect_cfg = (
                 command_effects_cfg.get(success_effect_name, {})
                 if success_effect_name
                 else {}
             )
-            if success_effect_name and isinstance(success_effect_cfg, dict):
+            if (
+                success_effect_name
+                and isinstance(success_effect_cfg, dict)
+                and not (
+                    success_effect_name == "ready"
+                    and command_hit.get("id") != "talk_mode"
+                )
+            ):
                 play_effect(success_effect_name, success_effect_cfg)
             if command_hit.get("id") == "shutdown":
                 restore_music_volume(music_restore_volume)
@@ -4274,7 +5136,7 @@ def main():
             )
             if short_input_reset_reply and tts_enabled:
                 speak(short_input_reset_reply, "reply_command_reset.wav")
-                play_effect("ready", ready_effect_cfg)
+                play_effect("recorded", recorded_effect_cfg)
             command_retry_active = True
             write_runtime_state(
                 runtime_state_path,
@@ -4331,6 +5193,12 @@ def main():
                 command_candidates, command_router_cfg
             )
         )
+        if not candidate_command_item:
+            candidate_command_item, candidate_reply_text = (
+                suggest_unknown_command_candidate(
+                    command_input_text, command_router_cfg, llm_cfg
+                )
+            )
         if candidate_command_item and candidate_reply_text:
             pending_command_confirmation = {
                 "item": candidate_command_item,
@@ -4363,6 +5231,7 @@ def main():
             )
             if candidate_reply_text and tts_enabled:
                 speak(candidate_reply_text, "reply_command_candidate.wav")
+                play_effect("recorded", recorded_effect_cfg)
             command_retry_active = True
             restore_music_volume(music_restore_volume)
             write_runtime_state(
@@ -4409,6 +5278,7 @@ def main():
         )
         if unknown_reply_text and tts_enabled:
             speak(unknown_reply_text, "reply_command_unknown.wav")
+            play_effect("recorded", recorded_effect_cfg)
         pending_command_confirmation = None
         command_retry_active = False
         restore_music_volume(music_restore_volume)

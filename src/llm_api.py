@@ -18,6 +18,7 @@ def resolve_llm_config(cfg: dict) -> dict[str, Any]:
         model = str(llm_cfg.get("model", "")).strip()
         if provider == "ollama":
             api_key_env = str(llm_cfg.get("api_key_env", "OLLAMA_API_KEY"))
+            think = llm_cfg.get("think", None)
             return {
                 "provider": "ollama",
                 "host": str(llm_cfg.get("host", cfg.get("ollama", {}).get("host", "http://127.0.0.1:11434"))),
@@ -26,6 +27,7 @@ def resolve_llm_config(cfg: dict) -> dict[str, Any]:
                 "api_key_env": api_key_env,
                 "api_key": os.environ.get(api_key_env, "").strip(),
                 "web_search": dict(llm_cfg.get("web_search", {})),
+                "think": think,
             }
         if provider == "gemini":
             api_key_env = str(llm_cfg.get("api_key_env", "GEMINI_API_KEY"))
@@ -69,6 +71,7 @@ def resolve_llm_config(cfg: dict) -> dict[str, Any]:
         "api_key_env": "OLLAMA_API_KEY",
         "api_key": os.environ.get("OLLAMA_API_KEY", "").strip(),
         "web_search": {},
+        "think": None,
     }
 
 
@@ -151,6 +154,7 @@ def _ollama_chat_messages(
     timeout_sec: int,
     options: dict | None = None,
     web_search: dict[str, Any] | None = None,
+    think: Any = None,
 ) -> str:
     messages = _augment_messages_with_ollama_web_search(
         {
@@ -168,6 +172,8 @@ def _ollama_chat_messages(
     }
     if options:
         payload["options"] = options
+    if think is not None:
+        payload["think"] = think
     r = requests.post(host.rstrip("/") + "/api/chat", json=payload, timeout=timeout_sec, headers=_ollama_headers(api_key))
     if r.status_code == 404:
         prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
@@ -178,11 +184,50 @@ def _ollama_chat_messages(
         }
         if options:
             fallback["options"] = options
+        if think is not None:
+            fallback["think"] = think
         r = requests.post(host.rstrip("/") + "/api/generate", json=fallback, timeout=timeout_sec, headers=_ollama_headers(api_key))
         r.raise_for_status()
         return normalize_text(r.json().get("response", ""))
     r.raise_for_status()
-    return normalize_text(((r.json().get("message") or {}).get("content", "")))
+    data = r.json()
+    content = normalize_text(((data.get("message") or {}).get("content", "")))
+    if content:
+        return content
+    thinking = normalize_text(((data.get("message") or {}).get("thinking", "")))
+    if thinking:
+        print(
+            "WARN: ollama chat returned empty content but thinking present; "
+            f"model={model} thinking_len={len(thinking)}"
+        )
+
+    prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+    fallback = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+    }
+    if options:
+        fallback["options"] = options
+    if think is not None:
+        fallback["think"] = think
+    r2 = requests.post(
+        host.rstrip("/") + "/api/generate",
+        json=fallback,
+        timeout=timeout_sec,
+        headers=_ollama_headers(api_key),
+    )
+    r2.raise_for_status()
+    response = normalize_text(r2.json().get("response", ""))
+    if response:
+        return response
+    generated_thinking = normalize_text(r2.json().get("thinking", ""))
+    if generated_thinking:
+        print(
+            "WARN: ollama generate returned empty response but thinking present; "
+            f"model={model} thinking_len={len(generated_thinking)}"
+        )
+    return ""
 
 
 def _gemini_chat_messages(
@@ -318,6 +363,7 @@ def llm_chat_messages(
             timeout_sec=int(llm_cfg["timeout_sec"]),
             options=options,
             web_search=dict(llm_cfg.get("web_search", {})),
+            think=llm_cfg.get("think"),
         )
     if provider == "gemini":
         return _gemini_chat_messages(
