@@ -2484,6 +2484,58 @@ def match_command(text: str, command_router_cfg: dict) -> dict | None:
     return None
 
 
+def find_command_by_id(command_id: str, command_router_cfg: dict) -> dict | None:
+    target = normalize_text(command_id)
+    if not target:
+        return None
+    for item in command_router_cfg.get("commands", []):
+        if normalize_text(str(item.get("id", ""))) == target:
+            return item
+    return None
+
+
+def resolve_music_context_command(text: str, command_router_cfg: dict) -> dict | None:
+    direct = match_command(text, command_router_cfg)
+    if direct:
+        return direct
+
+    body = compact_text(text).lower()
+    if not body:
+        return None
+
+    stop_aliases = {
+        compact_text(item).lower()
+        for item in ["止めて", "とめて", "止める", "とめる", "ストップ"]
+    }
+    next_aliases = {
+        compact_text(item).lower()
+        for item in ["次", "次の曲", "次の歌", "次にして", "スキップ", "スキップして"]
+    }
+    volume_up_aliases = {
+        compact_text(item).lower()
+        for item in ["上げて", "あげて", "大きくして", "大きく"]
+    }
+    volume_down_aliases = {
+        compact_text(item).lower()
+        for item in ["下げて", "さげて", "小さくして", "小さく"]
+    }
+    volume_query_aliases = {
+        compact_text(item).lower() for item in ["音量", "いくつ", "どれくらい"]
+    }
+
+    if body in stop_aliases:
+        return find_command_by_id("music_stop", command_router_cfg)
+    if body in next_aliases:
+        return find_command_by_id("music_next", command_router_cfg)
+    if body in volume_up_aliases:
+        return find_command_by_id("volume_up", command_router_cfg)
+    if body in volume_down_aliases:
+        return find_command_by_id("volume_down", command_router_cfg)
+    if body in volume_query_aliases:
+        return find_command_by_id("volume_query", command_router_cfg)
+    return None
+
+
 def build_command_phrase_index(
     command_router_cfg: dict,
     learned_aliases: dict[str, set[str]] | None = None,
@@ -2965,6 +3017,7 @@ def run_talk_mode(
     talk_llm_cfg = dict(llm_cfg)
     if talk_llm_cfg.get("provider") == "ollama" and talk_mode_cfg.get("ollama_model"):
         talk_llm_cfg["model"] = str(talk_mode_cfg["ollama_model"])
+        talk_llm_cfg.pop("think", None)
     try:
         llm_max_wait_sec = max(0.0, float(talk_mode_cfg.get("llm_max_wait_sec", 30)))
     except (TypeError, ValueError):
@@ -3534,9 +3587,14 @@ def main():
         str(command_router_cfg.get("ready_prompt", "はい、どうぞ。"))
     )
     unknown_command_reply: str | None = None
-    raw_unknown = command_router_cfg.get("unknown_command_reply") or command_router_cfg.get("fallback_reply", "")
+    if "unknown_command_reply" in command_router_cfg:
+        raw_unknown = command_router_cfg.get("unknown_command_reply", "")
+    else:
+        raw_unknown = command_router_cfg.get("fallback_reply", "")
     if raw_unknown:
         unknown_command_reply = normalize_text(str(raw_unknown)) or None
+        if unknown_command_reply == "{recognized} というコマンドは存在しないのだ。":
+            unknown_command_reply = None
     short_input_reset_chars = max(
         0, int(command_router_cfg.get("short_input_reset_chars", 3))
     )
@@ -4229,18 +4287,34 @@ def main():
                     **wake_meta,
                 }
                 if not wake_matched and is_music_playing():
-                    direct_music_hit = match_command(wake_text, command_router_cfg)
-                    if direct_music_hit and normalize_text(
-                        str(direct_music_hit.get("id", ""))
-                    ) == "music_stop":
-                        print("INFO: music playback shortcut detected: 音楽止めて")
-                        inline_command_text = wake_text
+                    direct_music_hit = resolve_music_context_command(wake_text, command_router_cfg)
+                    if direct_music_hit:
+                        command_id = normalize_text(str(direct_music_hit.get("id", "")))
+                        print(f"INFO: music playback shortcut detected: {command_id}")
+                        phrases = direct_music_hit.get("phrases", [])
+                        if isinstance(phrases, list) and phrases:
+                            inline_command_text = normalize_text(str(phrases[0]))
+                        else:
+                            inline_command_text = wake_text
                         wake_matched = True
-                        matched_wake_word = "music_stop_shortcut"
+                        matched_wake_word = f"{command_id}_shortcut"
                         wake_payload["matched"] = True
                         wake_payload["matched_wake_word"] = matched_wake_word
-                        wake_payload["music_stop_shortcut"] = True
-                        wake_payload["music_stop_shortcut_text"] = wake_text
+                        wake_payload["music_context_shortcut"] = command_id
+                        wake_payload["music_context_shortcut_text"] = wake_text
+                if not wake_matched and not is_music_playing():
+                    direct_music_start_hit = match_command(wake_text, command_router_cfg)
+                    if direct_music_start_hit and normalize_text(
+                        str(direct_music_start_hit.get("id", ""))
+                    ) == "music_start":
+                        print("INFO: music start shortcut detected: 音楽流して")
+                        inline_command_text = wake_text
+                        wake_matched = True
+                        matched_wake_word = "music_start_shortcut"
+                        wake_payload["matched"] = True
+                        wake_payload["matched_wake_word"] = matched_wake_word
+                        wake_payload["music_start_shortcut"] = True
+                        wake_payload["music_start_shortcut_text"] = wake_text
 
                 if wake_payload is not None:
                     append_event_logs(
@@ -4791,6 +4865,12 @@ def main():
         command_input_text = normalized_command_text or effective_user_text
 
         command_hit = match_command(command_input_text, command_router_cfg)
+        if not command_hit and is_music_playing():
+            command_hit = resolve_music_context_command(command_input_text, command_router_cfg)
+            if command_hit:
+                phrases = command_hit.get("phrases", [])
+                if isinstance(phrases, list) and phrases:
+                    command_input_text = normalize_text(str(phrases[0]))
         if pending_command_confirmation and not command_hit:
             if is_confirmation_yes(command_input_text, command_router_cfg):
                 pending_item = pending_command_confirmation.get("item")
@@ -5247,8 +5327,10 @@ def main():
             )
             continue
 
-        unknown_reply_text = unknown_command_reply.format(
-            recognized=command_input_text or "それ"
+        unknown_reply_text = (
+            unknown_command_reply.format(recognized=command_input_text or "それ")
+            if unknown_command_reply
+            else ""
         )
         print(f"INFO: command miss: {command_input_text}")
         append_event_logs(
