@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import socket
+import unicodedata
 import wave
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,28 @@ def is_music_playing(mpv_socket_path: str = "/tmp/voicechat-mpv.sock") -> bool:
         return True
     except OSError:
         return False
+
+
+def is_alarm_playing(
+    pid_file_path: str = "/tmp/voicechat-alarm.pid",
+    mpv_socket_path: str = "/tmp/voicechat-alarm-mpv.sock",
+) -> bool:
+    pid_file = Path(pid_file_path)
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text(encoding="utf-8").strip())
+            if pid > 0:
+                os.kill(pid, 0)
+                return True
+        except OSError:
+            pass
+        except Exception:
+            pass
+    return is_music_playing(mpv_socket_path)
+
+
+def is_media_playing() -> bool:
+    return is_alarm_playing() or is_music_playing()
 
 
 def get_music_volume_percent() -> int | None:
@@ -755,11 +778,27 @@ def write_runtime_state(path: Path, payload: dict):
 
 
 def play_wav_file(wav_path: Path, audio_out: str):
-    play_cmd = ["aplay"]
+    commands: list[list[str]] = []
+    wav_path_str = str(wav_path)
+    if not audio_out:
+        if shutil.which("pw-play"):
+            commands.append(["pw-play", wav_path_str])
+        if shutil.which("paplay"):
+            commands.append(["paplay", wav_path_str])
+    aplay_cmd = ["aplay"]
     if audio_out:
-        play_cmd += ["-D", audio_out]
-    play_cmd.append(str(wav_path))
-    run(play_cmd)
+        aplay_cmd += ["-D", audio_out]
+    aplay_cmd.append(wav_path_str)
+    commands.append(aplay_cmd)
+
+    for play_cmd in commands:
+        result = run(play_cmd, capture=True)
+        if result.returncode == 0:
+            return
+        stderr = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        stdout = (result.stdout or b"").decode("utf-8", errors="replace").strip()
+        detail = stderr or stdout or f"exit={result.returncode}"
+        print(f"WARN: effect playback failed: cmd={play_cmd} detail={detail}")
 
 
 def init_event_db(path: Path):
@@ -1661,6 +1700,58 @@ def compact_text(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+KANJI_DIGIT_MAP = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+
+
+def parse_japanese_number_token(token: str) -> int | None:
+    token = unicodedata.normalize("NFKC", normalize_text(token))
+    if not token:
+        return None
+    if token.isdigit():
+        return int(token)
+    if any(ch not in KANJI_DIGIT_MAP and ch != "十" for ch in token):
+        return None
+    if "十" in token:
+        left, right = token.split("十", 1)
+        tens = KANJI_DIGIT_MAP.get(left, 1) if left else 1
+        if left and left not in KANJI_DIGIT_MAP:
+            return None
+        if not right:
+            ones = 0
+        elif all(ch in KANJI_DIGIT_MAP for ch in right):
+            ones = int("".join(str(KANJI_DIGIT_MAP[ch]) for ch in right))
+        else:
+            return None
+        return tens * 10 + ones
+    if all(ch in KANJI_DIGIT_MAP for ch in token):
+        return int("".join(str(KANJI_DIGIT_MAP[ch]) for ch in token))
+    return None
+
+
+def normalize_japanese_time_text(text: str) -> str:
+    body = unicodedata.normalize("NFKC", text)
+
+    def repl(match: re.Match[str]) -> str:
+        value = parse_japanese_number_token(match.group(1))
+        if value is None:
+            return match.group(0)
+        return f"{value}{match.group(2)}"
+
+    return re.sub(r"([零〇一二三四五六七八九十0-9]+)(時|分)", repl, body)
+
+
 def coerce_dynamic_capture(raw_value: str | None, spec: dict | str | None) -> object:
     if isinstance(spec, str):
         spec = {"target": spec}
@@ -1694,7 +1785,7 @@ def coerce_dynamic_capture(raw_value: str | None, spec: dict | str | None) -> ob
 
 
 def match_dynamic_command(text: str, command_router_cfg: dict) -> dict | None:
-    body = compact_text(text).lower()
+    body = compact_text(normalize_japanese_time_text(text)).lower()
     if not body:
         return None
     patterns = command_router_cfg.get("dynamic_patterns", [])
@@ -2494,7 +2585,7 @@ def find_command_by_id(command_id: str, command_router_cfg: dict) -> dict | None
     return None
 
 
-def resolve_music_context_command(text: str, command_router_cfg: dict) -> dict | None:
+def resolve_playback_context_command(text: str, command_router_cfg: dict) -> dict | None:
     direct = match_command(text, command_router_cfg)
     if direct:
         return direct
@@ -4286,11 +4377,11 @@ def main():
                     "audio_path": str(wake_prepared_wav),
                     **wake_meta,
                 }
-                if not wake_matched and is_music_playing():
-                    direct_music_hit = resolve_music_context_command(wake_text, command_router_cfg)
+                if not wake_matched and is_media_playing():
+                    direct_music_hit = resolve_playback_context_command(wake_text, command_router_cfg)
                     if direct_music_hit:
                         command_id = normalize_text(str(direct_music_hit.get("id", "")))
-                        print(f"INFO: music playback shortcut detected: {command_id}")
+                        print(f"INFO: playback shortcut detected: {command_id}")
                         phrases = direct_music_hit.get("phrases", [])
                         if isinstance(phrases, list) and phrases:
                             inline_command_text = normalize_text(str(phrases[0]))
@@ -4302,7 +4393,7 @@ def main():
                         wake_payload["matched_wake_word"] = matched_wake_word
                         wake_payload["music_context_shortcut"] = command_id
                         wake_payload["music_context_shortcut_text"] = wake_text
-                if not wake_matched and not is_music_playing():
+                if not wake_matched and not is_media_playing():
                     direct_music_start_hit = match_command(wake_text, command_router_cfg)
                     if direct_music_start_hit and normalize_text(
                         str(direct_music_start_hit.get("id", ""))
@@ -4329,8 +4420,8 @@ def main():
                 if not wake_matched:
                     continue
 
-                if is_music_playing():
-                    print("INFO: music playback detected; ducking volume")
+                if is_media_playing():
+                    print("INFO: playback detected; ducking volume")
                     music_restore_volume = duck_music_volume(10)
 
                 if wake_inline_command_enabled:
@@ -4865,8 +4956,8 @@ def main():
         command_input_text = normalized_command_text or effective_user_text
 
         command_hit = match_command(command_input_text, command_router_cfg)
-        if not command_hit and is_music_playing():
-            command_hit = resolve_music_context_command(command_input_text, command_router_cfg)
+        if not command_hit and is_media_playing():
+            command_hit = resolve_playback_context_command(command_input_text, command_router_cfg)
             if command_hit:
                 phrases = command_hit.get("phrases", [])
                 if isinstance(phrases, list) and phrases:
@@ -5136,13 +5227,11 @@ def main():
                     alias=confirmation_source_text,
                     source="command_confirmed",
                 )
-            if reply_text and tts_enabled:
-                speak(reply_text, "reply_command.wav")
             success_effect_name = normalize_text(
                 str(command_hit.get("success_effect", ""))
             )
             if not success_effect_name:
-                success_effect_name = "recorded"
+                success_effect_name = "ready"
             success_effect_cfg = (
                 command_effects_cfg.get(success_effect_name, {})
                 if success_effect_name
@@ -5157,6 +5246,8 @@ def main():
                 )
             ):
                 play_effect(success_effect_name, success_effect_cfg)
+            if reply_text and tts_enabled:
+                speak(reply_text, "reply_command.wav")
             if command_hit.get("id") == "shutdown":
                 restore_music_volume(music_restore_volume)
                 print("INFO: shutdown command received")
