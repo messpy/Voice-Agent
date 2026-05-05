@@ -4,6 +4,8 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.env
+.env.local
 
 # Runtime outputs
 logs/
@@ -24,6 +26,7 @@ out.txt
 
 # Runtime state and temporary artifacts
 runtime_state.json
+.runtime/
 
 # Local speech assets and extracted binaries
 piper/

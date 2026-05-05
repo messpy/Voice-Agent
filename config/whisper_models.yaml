@@ -1,0 +1,77 @@
+models:
+  - id: tiny
+    family: whisper.cpp
+    label: "OpenAI Whisper tiny"
+    role: realtime
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-tiny.bin
+      - /tmp/voicechat-whisper/ggml-tiny.bin
+      - ./whisper.cpp/models/ggml-tiny.bin
+
+  - id: base
+    family: whisper.cpp
+    label: "OpenAI Whisper base"
+    role: balanced
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-base.bin
+      - /tmp/voicechat-whisper/ggml-base.bin
+      - ./whisper.cpp/models/ggml-base.bin
+
+  - id: small
+    family: whisper.cpp
+    label: "OpenAI Whisper small"
+    role: quality
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+      - /tmp/voicechat-whisper/ggml-small.bin
+      - ./whisper.cpp/models/ggml-small.bin
+
+  - id: medium
+    family: whisper.cpp
+    label: "OpenAI Whisper medium"
+    role: quality
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
+      - /tmp/voicechat-whisper/ggml-medium.bin
+      - ./whisper.cpp/models/ggml-medium.bin
+
+  - id: large_v3_turbo_q5_0
+    family: whisper.cpp
+    label: "OpenAI Whisper large-v3-turbo q5_0"
+    role: quality
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-large-v3-turbo-q5_0.bin
+      - /tmp/voicechat-whisper/ggml-large-v3-turbo-q5_0.bin
+      - ./whisper.cpp/models/ggml-large-v3-turbo-q5_0.bin
+
+  - id: distil_small_en
+    family: whisper.cpp
+    label: "Distil-Whisper small.en (distilled)"
+    role: fast
+    download_url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-distil-small.en.bin"
+    candidate_paths:
+      - /home/kennypi/work/voicechat/.runtime/models/ggml-distil-small.en.bin
+      - ./whisper.cpp/models/ggml-distil-small.en.bin
+    notes: "English-only. 6x faster than large-v2, 49% smaller."
+
+  - id: moonshine_tiny_ja
+    family: moonshine_onnx
+    label: "Moonshine tiny-ja"
+    role: japanese_realtime
+    download_url: "https://huggingface.co/UsefulSensors/moonshine/tree/main/onnx/merged/tiny-ja"
+    model_name: "moonshine/tiny-ja"
+    python_bin_candidates:
+      - ./.moonshine-venv/bin/python
+      - /home/kennypi/work/voicechat/.moonshine-venv/bin/python
+    cache_dir: ./.cache/huggingface
+    tmp_dir: ./.tmp
+
+defaults:
+  realtime: small
+  final: small
+  fallback: small

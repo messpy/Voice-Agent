@@ -1,1 +1,1 @@
-"""Operational and inspection tools for voicechat."""
+"""Admin tools for voicechat."""

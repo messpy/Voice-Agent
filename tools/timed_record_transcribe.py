@@ -12,7 +12,9 @@ from pathlib import Path
 
 import requests
 import yaml
-from src.llm_api import llm_chat, resolve_llm_config
+from src.audio_preprocess import prepare_whisper_audio
+from src.llm_api import resolve_llm_config
+from src.transcript_correction import build_transcript_correction_context, correct_transcript
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,12 +84,13 @@ def transcribe_whisper(whisper_bin: Path, whisper_model: Path, wav: Path, out_pr
         except FileNotFoundError:
             pass
 
+    prepared_wav = prepare_whisper_audio(wav, Path(str(out_prefix) + "_input.wav"), root=ROOT)
     cmd = [
         str(whisper_bin),
         "-m",
         str(whisper_model),
         "-f",
-        str(wav),
+        str(prepared_wav),
         "-l",
         lang,
         "-t",
@@ -117,20 +120,6 @@ def transcribe_whisper(whisper_bin: Path, whisper_model: Path, wav: Path, out_pr
     return ("\n".join(lines).strip(), dt)
 
 
-def correct_text(llm_cfg: dict, raw_text: str) -> str:
-    system_prompt = (
-        "あなたは音声認識の補正器。"
-        "誤変換、助詞の崩れ、不要な空白を自然な日本語に直す。"
-        "話し言葉として不自然な箇所は、元の意味を保ったまま自然な口語に整える。"
-        "固有名詞や人名は確信がないならそのまま残す。"
-        "意味を勝手に足さない。"
-        "聞き取れない部分は無理に補わない。"
-        "出力は補正後の本文だけにする。"
-    )
-    corrected = llm_chat(llm_cfg, system_prompt, f"音声認識結果:\n{raw_text}\n\n補正後テキストだけを返して。")
-    return corrected or raw_text
-
-
 def process_transcript(
     *,
     whisper_bin: Path,
@@ -149,7 +138,16 @@ def process_transcript(
     raw_txt_path.write_text(raw_text + "\n", encoding="utf-8")
 
     print("INFO: AI補正")
-    corrected_text = correct_text(llm_cfg, raw_text)
+    cfg = load_cfg()
+    sqlite_rel = str(cfg.get("storage", {}).get("sqlite", {}).get("path", "voicechat.db"))
+    sqlite_path = ROOT / sqlite_rel
+    rag_context = build_transcript_correction_context(
+        root=ROOT,
+        cfg=cfg,
+        raw_text=raw_text,
+        sqlite_path=sqlite_path,
+    )
+    corrected_text = correct_transcript(llm_cfg=llm_cfg, raw_text=raw_text, rag_context=rag_context)
     corrected_path.write_text(corrected_text + "\n", encoding="utf-8")
 
     meta = {
@@ -161,6 +159,7 @@ def process_transcript(
         "elapsed_sec": elapsed_sec,
         "raw": normalize_text(raw_text),
         "corrected": normalize_text(corrected_text),
+        "rag_context": rag_context,
     }
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

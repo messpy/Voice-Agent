@@ -3,6 +3,19 @@ from pathlib import Path
 import wave
 import json
 import time
+from functools import lru_cache
+
+
+_vosk_model_cache: dict[str, object] = {}
+
+
+def _get_vosk_model(model_path: Path) -> object:
+    from vosk import Model
+
+    key = str(model_path.resolve())
+    if key not in _vosk_model_cache:
+        _vosk_model_cache[key] = Model(str(model_path))
+    return _vosk_model_cache[key]
 
 
 def vosk_once(
@@ -11,7 +24,7 @@ def vosk_once(
     log_path: Path | None = None,
     boost_volume: float = 1.0,
 ) -> tuple[int, float, str]:
-    from vosk import Model, KaldiRecognizer
+    from vosk import KaldiRecognizer
     import subprocess
 
     if not model_path.exists():
@@ -22,7 +35,6 @@ def vosk_once(
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Apply volume boost if needed
     wav_to_use = wav
     if boost_volume != 1.0:
         boosted_wav = wav.parent / f"{wav.stem}_boosted{wav.suffix}"
@@ -47,7 +59,7 @@ def vosk_once(
 
     t0 = time.time()
     try:
-        model = Model(str(model_path))
+        model = _get_vosk_model(model_path)
     except Exception as e:
         return 1, 0.0, f"NG: vosk model load failed: {e}"
 

@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,11 +10,13 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = ROOT / "config" / "config.yaml"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from src.config_loader import load_cfg, resolve_config_path
+from src.runtime_files import read_json_file
 
-def load_cfg(path: Path) -> dict:
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+DEFAULT_CONFIG = resolve_config_path()
 
 
 def pid_alive(pid: int) -> bool:
@@ -39,12 +42,7 @@ def resolve_paths(cfg: dict) -> tuple[Path, Path, Path, Path]:
 
 
 def read_state(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    return read_json_file(path)
 
 
 def latest_events(
@@ -215,6 +213,102 @@ def print_events(sqlite_path: Path, limit: int, event_types: list[str] | None):
         print(f"{date} | {event_type:24} | {recognized or ''}")
 
 
+def print_commands(sqlite_path: Path, limit: int):
+    print_section("Commands")
+    rows = latest_events(sqlite_path, limit=limit, event_types=["command"])
+    if not rows:
+        print("(no command events)")
+        return
+    for date, _event_type, recognized, payload_json in rows:
+        try:
+            payload = json.loads(payload_json or "{}")
+        except Exception:
+            payload = {}
+        fast = payload.get("recognized_fast") or recognized or ""
+        final = payload.get("recognized_final") or ""
+        command_id = payload.get("command_id") or ""
+        command_ok = payload.get("command_ok")
+        command_reply = payload.get("command_reply") or ""
+        command_stderr = payload.get("command_stderr") or ""
+        print(f"{date} | {fast} -> {command_id} | ok={command_ok}")
+        if final and final != fast:
+            print(f"{'':19}   final={final}")
+        if command_reply:
+            print(f"{'':19}   reply={command_reply}")
+        if command_stderr:
+            print(f"{'':19}   stderr={command_stderr}")
+
+
+def print_failures(sqlite_path: Path, limit: int):
+    print_section("Wake Failures")
+    wake_rows = latest_events(sqlite_path, limit=limit * 4, event_types=["wake_check"])
+    wake_count = 0
+    if not wake_rows:
+        print("(no wake events)")
+    for date, _event_type, recognized, payload_json in wake_rows:
+        try:
+            payload = json.loads(payload_json or "{}")
+        except Exception:
+            payload = {}
+        matched = bool(payload.get("matched"))
+        speech_detected = bool(payload.get("speech_detected"))
+        recognized_text = payload.get("recognized") or recognized or ""
+        if matched or not speech_detected:
+            continue
+        wake_word = payload.get("wake_word") or ""
+        matched_wake_word = payload.get("matched_wake_word") or ""
+        print(
+            f"{date} | recognized={recognized_text} | wake_word={wake_word} | hit={matched_wake_word}"
+        )
+        wake_count += 1
+        if wake_count >= limit:
+            break
+    if wake_count == 0 and wake_rows:
+        print("(no failed wake detections)")
+
+    print_section("Command Failures")
+    command_rows = latest_events(
+        sqlite_path, limit=limit * 4, event_types=["command", "command_unknown"]
+    )
+    command_count = 0
+    if not command_rows:
+        print("(no command events)")
+        return
+    for date, event_type, recognized, payload_json in command_rows:
+        try:
+            payload = json.loads(payload_json or "{}")
+        except Exception:
+            payload = {}
+        if event_type == "command":
+            if payload.get("command_ok") is True:
+                continue
+            fast = payload.get("recognized_fast") or recognized or ""
+            final = payload.get("recognized_final") or ""
+            command_id = payload.get("command_id") or ""
+            command_reply = payload.get("command_reply") or ""
+            command_stderr = payload.get("command_stderr") or ""
+            print(f"{date} | {fast} -> {command_id} | ok={payload.get('command_ok')}")
+            if final and final != fast:
+                print(f"{'':19}   final={final}")
+            if command_reply:
+                print(f"{'':19}   reply={command_reply}")
+            if command_stderr:
+                print(f"{'':19}   stderr={command_stderr}")
+            command_count += 1
+        elif event_type == "command_unknown":
+            fast = payload.get("recognized_fast") or recognized or ""
+            final = payload.get("recognized_final") or ""
+            candidates = payload.get("command_candidates") or []
+            print(f"{date} | {fast} | unknown | candidates={len(candidates)}")
+            if final and final != fast:
+                print(f"{'':19}   final={final}")
+            command_count += 1
+        if command_count >= limit:
+            break
+    if command_count == 0:
+        print("(no failed command events)")
+
+
 def print_conversation(conversation_path: Path, limit: int):
     print_section("Conversation")
     rows = latest_conversation(conversation_path, limit)
@@ -252,6 +346,14 @@ def build_parser() -> argparse.ArgumentParser:
     conversation.add_argument("--limit", type=int, default=10)
     conversation.set_defaults(view="conversation")
 
+    commands = subparsers.add_parser("commands", help="Show recent executed commands.")
+    commands.add_argument("--limit", type=int, default=15)
+    commands.set_defaults(view="commands")
+
+    failures = subparsers.add_parser("failures", help="Show recent wake and command failures.")
+    failures.add_argument("--limit", type=int, default=15)
+    failures.set_defaults(view="failures")
+
     all_view = subparsers.add_parser("all", help="Show runtime, recent events, and full config.")
     all_view.add_argument("--limit", type=int, default=15)
     all_view.set_defaults(view="all")
@@ -278,6 +380,12 @@ def main() -> int:
         return 0
     if view == "conversation":
         print_conversation(conversation_path, getattr(args, "limit", 10))
+        return 0
+    if view == "commands":
+        print_commands(sqlite_path, getattr(args, "limit", 15))
+        return 0
+    if view == "failures":
+        print_failures(sqlite_path, getattr(args, "limit", 15))
         return 0
 
     print_runtime(cfg, state, workdir, state_path)

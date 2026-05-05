@@ -1,0 +1,22 @@
+[Unit]
+Description=voicechat assistant
+After=network-online.target pipewire.service wireplumber.service
+Wants=network-online.target pipewire.service wireplumber.service
+After=shared-voicevox.service shared-ollama.service
+Wants=shared-voicevox.service shared-ollama.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kennypi/work/voicechat
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+Environment=VOICECHAT_RUNNER=auto
+Environment=VOICECHAT_REQUIREMENTS_CHECK=1
+ExecStart=/home/kennypi/work/voicechat/voicechat.sh run
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
