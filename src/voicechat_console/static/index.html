@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>voicechat console</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">voicechat control room</p>
+          <h1>声の状態と家電 command を一画面で見る</h1>
+          <p class="hero-text">
+            今の待受状態、直近 command、設定、登録 command をまとめて管理する画面。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refreshButton" class="button ghost" type="button">更新</button>
+        </div>
+      </header>
+
+      <section class="command-top">
+        <article class="panel panel-command">
+          <div class="panel-title">
+            <h2>command 送信</h2>
+            <span class="panel-note">ブラウザからそのまま実行</span>
+          </div>
+          <form id="commandForm" class="stack">
+            <label class="field">
+              <span>テキスト command</span>
+              <input id="commandInput" name="text" type="text" placeholder="例: 次の曲 / 電気けして / エアコンつけて" />
+            </label>
+            <div class="quick-actions">
+              <div class="quick-actions-pair">
+                <button class="chip" type="button" data-command="電気つけて">電気ON</button>
+                <button class="chip" type="button" data-command="電気けして">電気OFF</button>
+              </div>
+              <div class="quick-actions-pair">
+                <button class="chip" type="button" data-command="音楽流して">音楽再生</button>
+                <button class="chip" type="button" data-command="音楽とめて">音楽停止</button>
+              </div>
+              <div class="quick-actions-pair">
+                <button class="chip" type="button" data-command="音量あげて">音量UP</button>
+                <button class="chip" type="button" data-command="音量さげて">音量DOWN</button>
+              </div>
+              <div class="quick-actions-pair">
+                <button class="chip" type="button" data-command="前の曲">前の曲</button>
+                <button class="chip" type="button" data-command="次の曲">次の曲</button>
+              </div>
+              <div class="quick-actions-pair">
+                <button class="chip" type="button" data-command="エアコンつけて">エアコンON</button>
+                <button class="chip" type="button" data-command="エアコンけして">エアコンOFF</button>
+              </div>
+            </div>
+            <button class="button" type="submit">送信する</button>
+          </form>
+          <pre id="commandResult" class="output"></pre>
+        </article>
+      </section>
+
+      <section class="status-strip">
+        <article class="status-card">
+          <span class="status-label">稼働</span>
+          <strong id="heroRunning" class="status-value">-</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">現在状態</span>
+          <strong id="heroState" class="status-value">-</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">認識モード</span>
+          <strong id="heroMode" class="status-value">-</strong>
+        </article>
+      </section>
+
+      <section class="dashboard">
+        <article class="panel panel-runtime">
+          <div class="panel-title">
+            <h2>現在の状態</h2>
+            <span class="panel-note">起動中の runtime state</span>
+          </div>
+          <dl id="runtimeGrid" class="kv"></dl>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <article class="panel panel-catalog">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>登録 command 一覧</h2>
+              <span class="panel-note">`command_router.commands` の中身</span>
+            </div>
+            <button id="reloadCatalogButton" class="button ghost" type="button">再読込</button>
+          </div>
+          <div id="commandCatalog" class="table"></div>
+        </article>
+
+        <article class="panel panel-events">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>command ログ</h2>
+              <span class="panel-note">クリックで詳細を開く</span>
+            </div>
+            <label class="inline-field">
+              <span>種類</span>
+              <select id="eventType">
+                <option value="command">command</option>
+                <option value="command_unknown">command_unknown</option>
+                <option value="wake_check">wake_check</option>
+                <option value="">all</option>
+              </select>
+            </label>
+          </div>
+          <div id="eventsTable" class="table"></div>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <article class="panel panel-add">
+          <div class="panel-title">
+            <h2>command を追加</h2>
+            <span class="panel-note">まずは `external_cli` 用の標準 command を追加</span>
+          </div>
+          <form id="catalogForm" class="stack">
+            <label class="field">
+              <span>ID</span>
+              <input id="catalogId" placeholder="例: bed_light_off" />
+            </label>
+            <label class="field">
+              <span>表示名</span>
+              <input id="catalogLabel" placeholder="例: 寝室けして" />
+            </label>
+            <label class="field">
+              <span>呼び方</span>
+              <input id="catalogPhrases" placeholder="例: 寝室けして, 寝室消して" />
+            </label>
+            <label class="field">
+              <span>action_name</span>
+              <input id="catalogActionName" placeholder="例: light.off" value="light.off" />
+            </label>
+            <label class="field">
+              <span>返答</span>
+              <input id="catalogReply" placeholder="例: 寝室の電気を消すのだ。" />
+            </label>
+            <label class="field">
+              <span>args JSON</span>
+              <textarea id="catalogArgs" class="mini-editor" spellcheck="false" placeholder='{"target":"bedroom"}'></textarea>
+            </label>
+            <button class="button" type="submit">登録する</button>
+          </form>
+          <pre id="catalogResult" class="output"></pre>
+        </article>
+
+        <article class="panel panel-config">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h2>config</h2>
+              <span class="panel-note">`config/config.yaml` を直接編集</span>
+            </div>
+            <button id="saveConfigButton" class="button ghost" type="button">保存</button>
+          </div>
+          <textarea id="configEditor" class="editor" spellcheck="false"></textarea>
+          <pre id="configResult" class="output"></pre>
+        </article>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

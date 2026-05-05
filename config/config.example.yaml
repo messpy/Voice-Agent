@@ -1,20 +1,51 @@
 # voicechat 設定
 
 paths:
-  workdir: /tmp/voicechat
+  workdir: /home/kennypi/work/voicechat/.runtime
 
 runtime:
   run_mode: always_on
   assistant_mode: zundamon
+  recognition_mode: balanced
   ai_correction: false
-  transcription_backend: local
+  transcription_backend: speech_recognition
   command_execution: true
   announce_startup: true
+
+recognition_profiles:
+  balanced:
+    label: "標準"
+    description: "speech_recognition で精度を優先し、wake も speech_recognition に任せるのだ。"
+    backend: speech_recognition
+    ai_correction: false
+    realtime_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    wake_threads: 4
+  light_chat:
+    label: "軽量チャット"
+    description: "軽い認識のあとで LLM 補正を入れて会話向けに速くするのだ。"
+    backend: local
+    ai_correction: true
+    realtime_model: /home/kennypi/work/voicechat/.runtime/models/ggml-tiny.bin
+    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-base.bin
+    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-base.bin
+    wake_threads: 4
+  precise:
+    label: "高精度"
+    description: "少し重いけれど認識精度を優先するのだ。"
+    backend: local
+    ai_correction: true
+    realtime_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
+    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
+    wake_threads: 4
 
 services:
   voicevox:
     enabled: true
-    auto_start: true
+    # voicevox は kennybot-voicevox.service で管理する
+    auto_start: false
     health_url: http://127.0.0.1:50021/version
     start_command:
       - /path/to/voicevox_engine/run
@@ -70,94 +101,144 @@ audio_pipeline:
       - /path/to/rnnoise_wrapper
       - "{input}"
       - "{output}"
+  whisper_preprocess:
+    enabled: true
+    sample_rate: 16000
+    channels: 1
+    codec: pcm_s16le
+    preset_name: compand_denoise
+    af: "afftdn=nr=14:nf=-30,highpass=f=120,lowpass=f=3800,compand=attacks=0.02:decays=0.2:points=-80/-80|-24/-10|0/-2"
 
 wake:
-  word: "ベリベリ"
-  backend: whisper
+  word: "スタックチャン"
+  backend: speech_recognition
   pre_vad_backend: webrtc
+  pre_vad_hard_gate: false
+  startup_arm_delay_sec: 0.3
   words:
-    - ベリベリ
-    - ずんだもん
+    - スタックチャン
     - アレクサ
   aliases:
-    ベリベリ:
-      - べりべり
-      - ベリーベリー
-      - べりーべりー
-      - ベリー
-      - べりー
-      - ベリ
-      - べり
-      - ペリペリ
-      - ぺりぺり
-      - ペリー
-      - ぺりー
-      - ペリ
-      - ぺり
-      - メリメリ
-      - めりめり
-      - メリ
-      - めり
-      - ベリベリベリ
-      - べりべりべり
-    ずんだもん:
-      - ズンダモン
-      - づんだもん
-      - ずんだ
-      - ズンダ
-      - ずんたもん
-      - ズンタモン
+    スタックチャン:
+      - スタックちゃん
+      - すたっくちゃん
+      - すたっくちやん
+      - スタックチャンさん
+      - アタックちゃん
+      - アタックチャン
+      - StackChan
+      - stack chan
+      - stack-chan
+      - stackchan
+      - すたっくちゃんさん
+      - スタちゃん
+      - すたちゃん
+      - たくちゃん
+      - たっくちゃん
     アレクサ:
+      - alexa
+      - alex
       - あれくさ
-      - アレックサ
-      - あれくしゃ
+      - .*あ?れ?く?さ.*
+      - アレクサ
       - アレクサー
-      - あれくさー
-      - アレク
-      - あれく
+      - あるくさ
+  blocklist:
+    - 音楽
+    - おんがく
+    - オンガク
+    - 音学
   window_sec: 2.0
   match_threshold: 0.7
-  whisper_model: ./whisper.cpp/models/ggml-base.bin
-  threads: 2
+  whisper_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
+  threads: 4
   porcupine:
     access_key_env: PORCUPINE_ACCESS_KEY
     model_path: ""
-    sensitivity: 0.6
+    sensitivity: 0.7
     sensitivities: {}
     keyword_paths:
-      ベリベリ: /path/to/beriberi_ja_raspberry-pi.ppn
-      ずんだもん: /path/to/zundamon_ja_raspberry-pi.ppn
-      アレクサ: /path/to/alexa_ja_raspberry-pi.ppn
+      # スタックチャン用 .ppn がある場合はここに追加する
+      ずんだもん: ./assets/porcupine/zundamon_ja_raspberry-pi.ppn
+      アレクサ: ./assets/porcupine/alexa_raspberry-pi.ppn
 
 vad:
   enabled: true
   aggressiveness: 0
-  silence_ms: 900
+  silence_ms: 1600
   max_record_sec: 15
   chunk_sec: 0.5
   speech_ratio: 0.12
   silero:
-    threshold: 0.5
-    min_speech_duration_ms: 120
+    threshold: 0.4
+    min_speech_duration_ms: 80
     min_silence_duration_ms: 150
 
 whisper:
-  # 精度優先なら ggml-medium.bin 以上を指定
+  # 既定は速度寄りの small。精度優先なら ggml-medium.bin 以上を指定
   bin: ./whisper.cpp/build/bin/whisper-cli
-  realtime_model: ./whisper.cpp/models/ggml-base.bin
-  model: ./whisper.cpp/models/ggml-medium.bin
+  realtime_model: ./whisper.cpp/models/ggml-small.bin
+  model: ./whisper.cpp/models/ggml-small.bin
   lang: ja
   beam: 6
   best: 6
   temp: 0.0
   threads: 4
 
+vosk:
+  model: ./vosk-model-small-ja
+  # 軽量 (48MB) - デフォルト
+  # realtime_model: ./vosk-model-small-ja
+  # 高精度 (1GB)
+  # realtime_model: ./vosk-model-ja-0.22
+
+google_stt:
+  # Google Speech-to-Text を使う場合は下記を調整
+  language_code: ja-JP
+  encoding: LINEAR16
+  sample_rate_hertz: 16000
+  model: latest_short
+  use_enhanced: true
+  enable_automatic_punctuation: true
+  audio_channel_count: 1
+  speech_contexts:
+    - phrases:
+        - スタックチャン
+        - ずんだもん
+
+speech_recognition:
+  # speech_recognition で Google Web Speech を使うときの設定
+  engine: google
+  language: ja-JP
+  show_all: false
+  timeout_sec: 2.5
+
+cohere_transcribe:
+  enabled: false
+  api_url: https://api.cohere.ai/v1/audio/transcriptions
+  model: ""
+  language: ja
+  prompt: ""
+  timeout_sec: 300
+  output_dir: /tmp/voicechat/cohere_transcribe
+  ffmpeg:
+    sample_rate: 16000
+    channels: 1
+    codec: pcm_s16le
+    format: wav
+  arecord:
+    device: plughw:CARD=Device,DEV=0
+    sample_rate: 16000
+    channels: 1
+    format: S16_LE
+
 llm:
   provider: ollama
-  model: llama3.2:1b
-  timeout_sec: 120
+  model: gpt-oss:120b-cloud
+  timeout_sec: 300
   host: http://127.0.0.1:11434
   api_key_env: OLLAMA_API_KEY
+  think: low
   api_base: https://generativelanguage.googleapis.com/v1beta
   anthropic_version: 2023-06-01
   web_search:
@@ -166,8 +247,8 @@ llm:
 
 ollama:
   host: http://127.0.0.1:11434
-  model: llama3.2:1b
-  timeout_sec: 120
+  model: gpt-oss:120b-cloud
+  timeout_sec: 300
 
 assistant:
   active_mode: phrase_test
@@ -200,7 +281,7 @@ assistant:
   modes:
     default:
       system_prompt: "あなたは日本語の音声アシスタント。会話量は状況に応じて調整する。単純な確認には短く、説明や相談には必要なだけ具体的に答える。自然な日本語で話す。"
-      startup_greeting: "起動しました。ベリベリと呼んでください。"
+      startup_greeting: "起動しました。準備できたのだ。"
       startup_briefing:
         enabled: true
         topic_source:
@@ -216,7 +297,7 @@ assistant:
             count: 3
     zundamon:
       system_prompt: "あなたはずんだもん。親しみやすく、少しくだけた自然な日本語で話すのだ。相手の話を受けて、短すぎず長すぎず自然に返すのだ。分からないときは決めつけずに聞き返すのだ。一人称は『ぼく』か『ずんだもん』を使うのだ。語尾は不自然に毎回は付けず、ときどき『のだ』を混ぜるのだ。"
-      startup_greeting: "ずんだもんとして起動したのだ。ベリベリと呼んでほしいのだ。"
+      startup_greeting: "ずんだもんとして起動したのだ。準備できたのだ。"
       startup_briefing:
         enabled: false
     debug_stt:
@@ -261,7 +342,7 @@ assistant:
       system_prompt: "あなたは日本語のAI導師。相手の理解度に合わせて、問い返しを交えながら丁寧に導く。いきなり答えを押しつけず、要点、理由、次の一歩をわかりやすく示す。必要なら短く、必要なら具体例も使う。"
       startup_greeting: "導師モードで起動しました。学びたいことを話してください。"
     ai_duo:
-      ollama_model: qwen2.5:1.5b
+      ollama_model: gpt-oss:120b-cloud
       startup_greeting: "AI同士のおしゃべりモードを始めるのだ。"
       duo:
         opening: "今日のニュースと天気をもとに、二人で話してみるのだ。"
@@ -293,13 +374,9 @@ assistant:
 
 ai_control:
   aliases:
-    - alias: ollama_qwen
+    - alias: ollama_kimi
       provider: ollama
-      model: qwen2.5:7b
-      pull_command:
-        - ollama
-        - pull
-        - qwen2.5:7b
+      model: gpt-oss:120b-cloud
     - alias: gemini_flash
       provider: gemini
       model: gemini-2.5-flash
@@ -320,22 +397,119 @@ tts:
   voicevox_intonation_scale: 1.15
   voicevox_volume_scale: 1.0
 
+effects:
+  ready:
+    enabled: true
+    file: assets/effects/ready_pipo.wav
+    frequency_hz: 523.3
+    duration_ms: 140
+    volume: 0.48
+    gap_ms: 25
+    sequence:
+      - frequency_hz: 523.3
+        duration_ms: 130
+        volume: 0.44
+        gap_ms: 20
+      - frequency_hz: 659.3
+        duration_ms: 170
+        volume: 0.5
+  recorded:
+    enabled: true
+    file: assets/effects/recorded_popi.wav
+    frequency_hz: 587.3
+    duration_ms: 130
+    volume: 0.44
+    gap_ms: 20
+    sequence:
+      - frequency_hz: 587.3
+        duration_ms: 120
+        volume: 0.42
+        gap_ms: 20
+      - frequency_hz: 440.0
+        duration_ms: 180
+        volume: 0.48
+  commands:
+    volume_up:
+      enabled: true
+      file: assets/effects/recorded_popi.wav
+      sequence:
+        - frequency_hz: 523.3
+          duration_ms: 90
+          volume: 0.42
+          gap_ms: 20
+        - frequency_hz: 784.0
+          duration_ms: 120
+          volume: 0.5
+    volume_down:
+      enabled: true
+      file: assets/effects/volume_down_popi.wav
+      sequence:
+        - frequency_hz: 784.0
+          duration_ms: 90
+          volume: 0.42
+          gap_ms: 20
+        - frequency_hz: 523.3
+          duration_ms: 120
+          volume: 0.5
+    volume_change:
+      enabled: true
+      file: assets/effects/ready_pipo.wav
+
 command_router:
   enabled: true
   fallback_reply: "その操作はまだ登録していないのだ。"
   ready_prompt: "はい、どうぞ。"
-  unknown_command_reply: "{recognized} というコマンドは存在しないのだ。"
+  unknown_command_reply: ""
+  talk_mode:
+    record_sec: 8.0
+    pre_record_delay_sec: 1.5
+    ollama_model: gemma3:4b
+    use_corrected_transcript: false
+    ollama_options:
+      num_predict: 64
+      temperature: 0.7
+  help:
+    intro: "使える操作は次のとおりなのだ。"
+    separator: "、"
+    outro: "スタックチャンのあとに続けて言ってほしいのだ。"
   short_input_reset_chars: 1
-  short_input_reset_reply: "もう一度お願いするのだ。"
-  no_speech_timeout_sec: 5
-  no_speech_reset_reply: "もう一度お願いするのだ。"
+  short_input_reset_reply: ""
+  no_speech_timeout_sec: 2.0
+  no_speech_reset_reply: ""
+  silero_gate:
+    enabled: true
+  candidate_confirmation:
+    enabled: true
+    min_score: 0.45
+    top_k: 2
+    reply_single: "もしかして {primary} なのだ？ はい か いいえ、または言い直してほしいのだ。"
+    reply_with_alternatives: "もしかして {primary} なのだ？ 候補には {alternatives} もあるのだ。{primary} でよければ はい、違うなら言い直してほしいのだ。"
+    yes_phrases:
+      - はい
+      - うん
+      - お願い
+      - それ
+    no_phrases:
+      - いいえ
+      - 違う
+      - ちがう
+      - 違います
+    reset_phrases:
+      - 何でもない
+      - なんでもない
+      - キャンセル
+      - なし
+      - やめる
   action_runners:
     external_cli:
       command:
-        - python3
+        - .venv/bin/python
         - -m
         - voicechat_actions.bridge
-      cwd: /path/to/voicechat-actions
+      cwd: ../voicechat-actions
+      env:
+        PULSE_SERVER: unix:/run/user/1000/pulse/native
+        XDG_RUNTIME_DIR: /run/user/1000
   dynamic_patterns:
     - id: volume_set_percent
       pattern: "音量を(?P<value>\\d{1,3})%にして"
@@ -374,8 +548,8 @@ command_router:
           max: 1440
       args: {}
     - id: alarm_set_hm
-      pattern: "(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?に(?:起こして|アラーム(?:を)?セットして)"
-      reply: "{hour}時{minute}分にアラームをセットするのだ。"
+      pattern: "(?<!明日)(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?(?:に)?(?:起こして|アラーム(?:を)?セットして)"
+      reply: "{hour}時{minute}分にアラームをセットしました。"
       action_type: external_cli
       action_name: alarm.set
       captures:
@@ -391,47 +565,220 @@ command_router:
           max: 59
           default: 0
       args: {}
+    - id: alarm_set_plain
+      pattern: "(?<!明日)(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?にアラーム"
+      reply: "{hour}時{minute}分にアラームをセットしました。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+        minute:
+          target: minute
+          type: int
+          min: 0
+          max: 59
+          default: 0
+      args: {}
+    - id: alarm_set_half
+      pattern: "(?<!明日)(?P<hour>\\d{1,2})時半(?:に)?(?:起こして|アラーム(?:を)?セットして)"
+      reply: "{hour}時30分にアラームをセットしました。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+      args:
+        minute: 30
+    - id: alarm_set_tomorrow_half
+      pattern: "明日(?P<hour>\\d{1,2})時半(?:に)?(?:起こして|アラーム(?:を)?セットして|アラーム)"
+      reply: "明日{hour}時30分にアラームをセットしました。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+      args:
+        minute: 30
+    - id: alarm_set_tomorrow_hm
+      pattern: "明日(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?(?:に)?(?:起こして|アラーム(?:を)?セットして)"
+      reply: "明日{hour}時{minute}分にアラームをセットしました。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+        minute:
+          target: minute
+          type: int
+          min: 0
+          max: 59
+          default: 0
+      args: {}
+    - id: alarm_set_tomorrow_plain
+      pattern: "明日(?P<hour>\\d{1,2})時(?:(?P<minute>\\d{1,2})分)?にアラーム"
+      reply: "明日{hour}時{minute}分にアラームをセットしました。"
+      action_type: external_cli
+      action_name: alarm.set
+      captures:
+        hour:
+          target: hour
+          type: int
+          min: 0
+          max: 23
+        minute:
+          target: minute
+          type: int
+          min: 0
+          max: 59
+          default: 0
+      args: {}
+    - id: video_play_search
+      pattern: "(?P<query>.+?)の動画を再生して"
+      reply: "{query}の動画を再生するのだ。"
+      action_type: external_cli
+      action_name: music.play
+      captures:
+        query:
+          target: search_query
+          type: str
+      args:
+        playlist_url: ""
+    - id: video_play_youtube
+      pattern: "YouTubeで(?P<query>.+?)を再生して"
+      reply: "{query}をYouTubeで再生するのだ。"
+      action_type: external_cli
+      action_name: music.play
+      captures:
+        query:
+          target: search_query
+          type: str
+      args:
+        playlist_url: ""
+    - id: video_play_generic
+      pattern: "(?P<query>.+?)を再生して"
+      reply: "{query}を再生するのだ。"
+      action_type: external_cli
+      action_name: music.play
+      captures:
+        query:
+          target: search_query
+          type: str
+      args:
+        playlist_url: ""
   normalization:
     enabled: true
     top_k: 5
     min_score: 0.32
     auto_apply_score: 0.72
-    llm_enabled: false
+    llm_enabled: true
   commands:
     - id: volume_up
+      help_label: "音量あげて"
       phrases:
         - 音量あげて
         - 音量上げて
       reply: "音量を上げるのだ。"
+      success_effect: volume_change
       action_type: external_cli
       action_name: audio.volume_up
       args:
         delta: "10%+"
     - id: volume_down
+      help_label: "音量下げて"
       phrases:
         - 音量さげて
         - 音量下げて
       reply: "音量を下げるのだ。"
+      success_effect: volume_change
       action_type: external_cli
       action_name: audio.volume_down
       args:
         delta: "10%-"
+    - id: volume_query
+      help_label: "音量いくつ"
+      phrases:
+        - 音量いくつ
+        - 今の音量
+        - 音量どれくらい
+        - 音量何パーセント
+      reply: ""
+      action_type: external_cli
+      action_name: audio.volume_get
+      args: {}
     - id: music_stop
+      help_label: "音楽とめて"
       phrases:
         - 音楽とめて
         - 音楽止めて
+        - 音楽消して
       reply: "音楽を止めるのだ。"
       action_type: external_cli
       action_name: music.stop
       args: {}
-    - id: music_start
+    - id: music_next
+      help_label: "次の曲"
       phrases:
+        - 次の曲
+        - 次の歌
+        - 次にして
+        - スキップして
+      reply: "次の曲にするのだ。"
+      action_type: external_cli
+      action_name: music.next
+      args: {}
+    - id: music_prev
+      help_label: "前の曲"
+      phrases:
+        - 前の曲
+        - 前の歌
+        - ひとつ前
+        - 前にして
+        - 戻して
+      reply: "前の曲に戻すのだ。"
+      action_type: external_cli
+      action_name: music.prev
+      args: {}
+    - id: music_start
+      help_label: "音楽流して"
+      phrases:
+        - 音楽流して
+        - 音楽かけて
+        - 音楽再生して
         - 音楽起動して
-        - ベリベリ音楽起動して
-      reply: "音楽を起動するのだ。"
+        - プレイリストかけて
+        - プレイリスト流して
+        - スタックチャン音楽起動して
+      reply: "音楽を流すのだ。"
       action_type: external_cli
       action_name: music.play
-      args: {}
+      args:
+        playlist_url: "https://youtube.com/playlist?list=PL68KGdq_1eUWbODI8PP_9E4ktnpLOxuH2&si=ivr2HEz9O1glHuLh"
+        shuffle: "--shuffle"
+    - id: news_read
+      help_label: "ニュース読んで"
+      phrases:
+        - ニュース読んで
+        - 今日のニュース
+        - 最新ニュース
+        - ニュース
+      reply: "ニュースを読むのだ。"
+      action_type: external_cli
+      action_name: news.read
+      args:
+        count: 3
     - id: timer_cancel
       phrases:
         - タイマー止めて
@@ -460,14 +807,25 @@ command_router:
       phrases:
         - アラームどうなってる
         - 次のアラーム
+        - アラーム一覧
+        - アラーム教えて
       reply: ""
       action_type: external_cli
       action_name: alarm.status
       args: {}
     - id: light_on
+      help_label: "電気つけて"
       phrases:
+        - 電気つける
         - 電気つけて
+        - 電気点けて
+        - 電気付けて
+        - 電気オン
         - ライトつけて
+        - ライトつける
+        - ライトオン
+        - 明かりつけて
+        - 明かりつける
       reply: "電気をつけるのだ。"
       action_type: external_cli
       action_name: light.on
@@ -475,21 +833,58 @@ command_router:
         target: main
     - id: light_off
       phrases:
+        - 電気消す
         - 電気消して
+        - 電気けして
+        - 電気オフ
         - ライト消して
+        - ライトけして
+        - ライト消す
+        - ライトオフ
+        - 明かり消して
+        - 明かり消す
       reply: "電気を消すのだ。"
       action_type: external_cli
       action_name: light.off
       args:
         target: main
+    - id: aircon_on
+      help_label: "エアコンつけて"
+      phrases:
+        - エアコンつけて
+        - エアコン点けて
+        - クーラーつけて
+        - エアコンオン
+        - クーラーオン
+      reply: "エアコンをつけるのだ。"
+      action_type: external_cli
+      action_name: aircon.on
+      args:
+        target: main
+    - id: aircon_off
+      help_label: "エアコン消して"
+      phrases:
+        - エアコン消して
+        - エアコンけして
+        - クーラー消して
+        - クーラーけして
+        - エアコンオフ
+        - クーラーオフ
+      reply: "エアコンを消すのだ。"
+      action_type: external_cli
+      action_name: aircon.off
+      args:
+        target: main
     - id: help
+      help_enabled: false
       phrases:
         - help
         - ヘルプ
         - 使い方
         - できること
-      reply: "使える操作は、音量あげて、音量下げて、音楽とめて、音楽起動して、いつ話したかを聞く、のだ。ベリベリのあとに続けて言ってほしいのだ。"
+      reply: ""
     - id: shutdown
+      help_label: "終了"
       phrases:
         - 終了
         - 停止
@@ -497,6 +892,7 @@ command_router:
         - シャットダウン
       reply: "終了するのだ。"
     - id: recent_raw_transcript
+      help_label: "直近の文字起こし"
       phrases:
         - 直近の文字起こし
         - 直近の生文字起こし
@@ -504,20 +900,37 @@ command_router:
         - 最新の文字起こし
       reply: ""
     - id: today_raw_transcript
+      help_label: "今日の文字起こし"
       phrases:
         - 今日の文字起こし
         - 今日の生文字起こし
         - きょうの文字起こし
         - 今日話した内容
       reply: ""
+    - id: talk_mode
+      help_label: "お話モード"
+      phrases:
+        - お話モード
+        - お話して
+        - お話しよう
+        - 会話モード
+        - しゃべって
+        - こんにちは
+        - こんにちわ
+        - こんちは
+      reply: ""
     - id: switch_ai_ollama
+      help_enabled: false
+      help_label: "AIをOllamaにして"
       phrases:
         - aiをollamaにして
         - ollamaにして
       reply: ""
       action_type: internal_set_model_alias
-      ai_alias: ollama_qwen
+      ai_alias: ollama_kimi
     - id: switch_ai_gemini
+      help_enabled: false
+      help_label: "AIをGeminiにして"
       phrases:
         - aiをgeminiにして
         - geminiにして
@@ -525,6 +938,8 @@ command_router:
       action_type: internal_set_model_alias
       ai_alias: gemini_flash
     - id: switch_ai_openai
+      help_enabled: false
+      help_label: "AIをOpenAIにして"
       phrases:
         - aiをopenaiにして
         - openaiにして
@@ -532,6 +947,8 @@ command_router:
       action_type: internal_set_model_alias
       ai_alias: openai_gpt5mini
     - id: switch_ai_anthropic
+      help_enabled: false
+      help_label: "AIをAnthropicにして"
       phrases:
         - aiをanthropicにして
         - anthropicにして
@@ -539,11 +956,38 @@ command_router:
       reply: ""
       action_type: internal_set_model_alias
       ai_alias: anthropic_claude
-    - id: ollama_pull_qwen
+    - id: recognition_mode_status
+      help_label: "認識モード"
       phrases:
-        - ollama pull qwen
-        - qwenをpullして
-        - qwenをダウンロードして
+        - 認識モード
+        - 今の認識モード
+        - 認識設定
       reply: ""
-      action_type: internal_pull_model_alias
-      ai_alias: ollama_qwen
+      action_type: internal_show_recognition_mode
+    - id: recognition_mode_balanced
+      help_label: "認識モード標準"
+      phrases:
+        - 認識モード標準
+        - 認識を標準にして
+        - 標準認識にして
+      reply: ""
+      action_type: internal_set_recognition_mode
+      recognition_mode: balanced
+    - id: recognition_mode_light_chat
+      help_label: "認識モード軽量チャット"
+      phrases:
+        - 認識モード軽量
+        - 認識モード軽量チャット
+        - 軽量チャットにして
+      reply: ""
+      action_type: internal_set_recognition_mode
+      recognition_mode: light_chat
+    - id: recognition_mode_precise
+      help_label: "認識モード高精度"
+      phrases:
+        - 認識モード高精度
+        - 認識を高精度にして
+        - 高精度認識にして
+      reply: ""
+      action_type: internal_set_recognition_mode
+      recognition_mode: precise

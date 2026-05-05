@@ -19,9 +19,10 @@ from typing import Any
 import requests
 import soundfile as sf
 import webrtcvad
-import yaml
 from src.audio_preprocess import prepare_whisper_audio
+from src.config_loader import load_cfg
 from src.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
+from src.runtime_files import write_json_atomic
 from src.speech_recognition_runner import speech_recognition_once
 from src.vosk_runner import vosk_once
 
@@ -37,15 +38,6 @@ DEFAULT_RAG_GLOBS = [
 def die(msg: str, code: int = 1):
     print(msg, file=sys.stderr)
     raise SystemExit(code)
-
-
-def load_cfg():
-    cfg_override = os.environ.get("VOICECHAT_CONFIG", "").strip()
-    p = Path(cfg_override) if cfg_override else (ROOT / "config" / "config.yaml")
-    if not p.exists():
-        die(f"NG: config not found: {p}")
-    return yaml.safe_load(p.read_text(encoding="utf-8"))
-
 
 def is_music_playing(mpv_socket_path: str = "/tmp/voicechat-mpv.sock") -> bool:
     sock = Path(mpv_socket_path)
@@ -769,12 +761,9 @@ def append_jsonl(path: Path, data: dict):
 
 
 def write_runtime_state(path: Path, payload: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = dict(payload)
     data["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    write_json_atomic(path, data)
 
 
 def play_wav_file(wav_path: Path, audio_out: str):
@@ -2602,6 +2591,10 @@ def resolve_playback_context_command(text: str, command_router_cfg: dict) -> dic
         compact_text(item).lower()
         for item in ["次", "次の曲", "次の歌", "次にして", "スキップ", "スキップして"]
     }
+    prev_aliases = {
+        compact_text(item).lower()
+        for item in ["前", "前の曲", "前の歌", "前にして", "戻して", "ひとつ前"]
+    }
     volume_up_aliases = {
         compact_text(item).lower()
         for item in ["上げて", "あげて", "大きくして", "大きく"]
@@ -2618,6 +2611,8 @@ def resolve_playback_context_command(text: str, command_router_cfg: dict) -> dic
         return find_command_by_id("music_stop", command_router_cfg)
     if body in next_aliases:
         return find_command_by_id("music_next", command_router_cfg)
+    if body in prev_aliases:
+        return find_command_by_id("music_prev", command_router_cfg)
     if body in volume_up_aliases:
         return find_command_by_id("volume_up", command_router_cfg)
     if body in volume_down_aliases:
@@ -4424,7 +4419,7 @@ def main():
                     print("INFO: playback detected; ducking volume")
                     music_restore_volume = duck_music_volume(10)
 
-                if wake_inline_command_enabled:
+                if wake_inline_command_enabled and not inline_command_text:
                     inline_command_text, _ = extract_inline_command_from_wake(
                         wake_text,
                         wake_words,
@@ -5054,6 +5049,7 @@ def main():
                         "last_command": "talk_mode",
                         "recognized_fast": user_text,
                         "recognized_final": final_user_text or user_text,
+                        "last_reply": talk_reply_text,
                     },
                 )
                 run_talk_mode(
@@ -5270,6 +5266,7 @@ def main():
                     "last_command": command_hit.get("id"),
                     "recognized_fast": user_text,
                     "recognized_final": final_user_text or user_text,
+                    "last_reply": reply_text,
                 },
             )
             continue
