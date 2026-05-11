@@ -3,6 +3,7 @@ import sys
 import wave
 import time
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -363,8 +364,6 @@ def command_mode(word_map: dict):
 
 def process_volume_command(text: str) -> str:
     """音量コマンドを処理"""
-    import re
-
     # 音量をXXに設定
     match = re.search(r"音量.?(\d+)", text)
     if match:
