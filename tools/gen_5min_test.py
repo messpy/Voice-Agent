@@ -7,14 +7,21 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import requests
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import TEST_AUDIO_SUITE_DIR
+
 VOICEVOX_URL = "http://127.0.0.1:50021"
 SPEAKER_ID = 3  # ずんだもん
-OUT_DIR = Path("/home/kennypi/work/voicechat/test_audio_suite")
+OUT_DIR = TEST_AUDIO_SUITE_DIR
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

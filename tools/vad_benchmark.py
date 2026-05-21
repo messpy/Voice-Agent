@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-RESULTS_DIR = ROOT / "benchmark_results"
+from src.runtime_layout import BENCHMARK_RESULTS_DIR, TEST_AUDIO_SUITE_DIR
+
+RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -134,7 +136,7 @@ def run_detector(
 
 
 def resolve_default_files() -> list[Path]:
-    suite_dir = ROOT / "test_audio_suite"
+    suite_dir = TEST_AUDIO_SUITE_DIR
     candidates = sorted(suite_dir.glob("seg_*.wav"))
     if not candidates:
         candidates = sorted(suite_dir.glob("*.wav"))

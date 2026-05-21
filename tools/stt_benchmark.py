@@ -32,6 +32,12 @@ import yaml
 from dataclasses import dataclass
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import BENCHMARK_RESULTS_DIR
+
 CFG = ROOT / "config" / "whisper_models.yaml"
 
 
@@ -491,7 +497,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-file", type=Path, help="参照テキストファイル")
     parser.add_argument("--lang", default="ja", help="言語 (デフォルト: ja)")
     parser.add_argument("--threads", type=int, default=4, help="スレッド数 (デフォルト: 4)")
-    parser.add_argument("--out-dir", type=Path, default=ROOT / "benchmark_results", help="出力ディレクトリ")
+    parser.add_argument("--out-dir", type=Path, default=BENCHMARK_RESULTS_DIR, help="出力ディレクトリ")
     return parser.parse_args()
 
 

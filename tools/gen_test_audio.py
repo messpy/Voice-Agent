@@ -23,12 +23,18 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import TEST_AUDIO_SUITE_DIR
+
 VOICEVOX_URL = "http://127.0.0.1:50021"
 SPEAKER_ID = 3  # ずんだもん
 
@@ -144,14 +150,15 @@ def check_voicevox() -> bool:
 
 
 def main() -> None:
+    global SPEAKER_ID
+
     parser = argparse.ArgumentParser(description="テスト用音声生成")
-    parser.add_argument("--out", type=Path, default=ROOT / "test_audio.wav", help="出力ファイルパス")
+    parser.add_argument("--out", type=Path, default=TEST_AUDIO_SUITE_DIR / "test_short.wav", help="出力ファイルパス")
     parser.add_argument("--text", type=str, help="合成するテキスト")
     parser.add_argument("--suite", action="store_true", help="テストスイート生成")
     parser.add_argument("--speaker", type=int, default=SPEAKER_ID, help="話者ID (デフォルト: 3=ずんだもん)")
     args = parser.parse_args()
 
-    global SPEAKER_ID
     SPEAKER_ID = args.speaker
 
     print("=" * 60)
@@ -162,7 +169,7 @@ def main() -> None:
         raise SystemExit(1)
 
     if args.suite:
-        out_dir = args.out if args.out.is_dir() else ROOT / "test_audio_suite"
+        out_dir = args.out if args.out.is_dir() else TEST_AUDIO_SUITE_DIR
         gen_suite(out_dir)
     else:
         gen_default(args.out, args.text)

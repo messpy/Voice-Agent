@@ -39,17 +39,17 @@ uv run python tools/gen_test_audio.py --out test_hello.wav --text "こんにち�
 
 ```bash
 # 全モデルでベンチマーク
-uv run python tools/stt_benchmark.py test_audio_suite/test_short.wav
+uv run python tools/stt_benchmark.py .runtime/test_audio_suite/test_short.wav
 
 # 特定のモデルのみ
-uv run python tools/stt_benchmark.py test_audio_suite/test_short.wav --ids small kotoba_v2_q5_0
+uv run python tools/stt_benchmark.py .runtime/test_audio_suite/test_short.wav --ids small kotoba_v2_q5_0
 
 # 参照テキストを指定して類似度スコアも計算
-uv run python tools/stt_benchmark.py test_audio_suite/test_short.wav \
+uv run python tools/stt_benchmark.py .runtime/test_audio_suite/test_short.wav \
   --ref "こんにちは、音声認識のテストです。"
 
 # スレッド数変更
-uv run python tools/stt_benchmark.py test_audio_suite/test_short.wav --threads 4
+uv run python tools/stt_benchmark.py .runtime/test_audio_suite/test_short.wav --threads 4
 ```
 
 ### 4. VAD ベンチマーク実行
@@ -58,20 +58,20 @@ uv run python tools/stt_benchmark.py test_audio_suite/test_short.wav --threads 4
 # 以前の STT ベンチで使った音声データを既定で比較
 uv run --extra wake python tools/vad_benchmark.py
 
-# 旧 test_audio_suite を使う場合
+# ローカル test_audio_suite を使う場合
 uv run --extra wake python tools/vad_benchmark.py --suite test_audio_suite
 
 # 特定ファイルだけ比較
-uv run --extra wake python tools/vad_benchmark.py test_audio_suite/seg_01.wav test_audio_suite/seg_02.wav
+uv run --extra wake python tools/vad_benchmark.py .runtime/test_audio_suite/seg_01.wav .runtime/test_audio_suite/seg_02.wav
 
 # 期待値つきで比較
 uv run --extra wake python tools/vad_benchmark.py \
-  test_audio_suite/seg_01.wav \
+  .runtime/test_audio_suite/seg_01.wav \
   --expect seg_01.wav=yes
 ```
 
 `silero-vad` は `wake` extra に入っているため、`uv run --extra wake ...` を使います。
-既定では、以前の STT ベンチで使った `/home/kennypi/data/audio/music/テイキョウヘイセイダイガク.mp3` と `/home/kennypi/data/audio/voice_recognition/ItsOnlyNewYork.mp3` を対象にします。`test_audio_suite` を使いたい場合は `--suite test_audio_suite` を指定します。
+既定では、以前の STT ベンチで使った `/home/kennypi/data/audio/music/テイキョウヘイセイダイガク.mp3` と `/home/kennypi/data/audio/voice_recognition/ItsOnlyNewYork.mp3` を対象にします。ローカルのテスト音声を使いたい場合は `--suite test_audio_suite` を指定します。
 
 ## ベンチマーク結果の例
 
@@ -102,7 +102,7 @@ uv run --extra wake python tools/vad_benchmark.py \
   3. small                      4.67s  (OpenAI Whisper small)
   4. kotoba_v2_q5_0             5.12s  (Kotoba Whisper v2.0 q5_0)
 
-💾 結果保存: /home/kennypi/work/voicechat/benchmark_results/benchmark_20260414_123456.json
+💾 結果保存: /home/kennypi/work/voicechat/.runtime/benchmark_results/benchmark_20260414_123456.json
 ```
 
 ## 利用可能なモデル
@@ -166,8 +166,8 @@ uv run python tools/stt_benchmark.py test_audio.wav \
 
 ```bash
 # 前回の結果と比較
-ls -la benchmark_results/
-cat benchmark_results/benchmark_20260414_*.json | python -m json.tool
+ls -la .runtime/benchmark_results/
+cat .runtime/benchmark_results/benchmark_20260414_*.json | python -m json.tool
 ```
 
 ## 自分の音声でテストする場合

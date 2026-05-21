@@ -451,7 +451,7 @@ cd <repo-root>
 
 ## LLM プロバイダ
 
-現在の補正・会話系 API は `Ollama` 固定ではなく、`Ollama` / `Gemini` / `OpenAI` / `Anthropic` を切り替えられます。
+現在の補正・会話系 backend は `Ollama` 固定ではなく、`Ollama` / `Codex CLI` / `Gemini CLI` / `Gemini API` / `OpenAI` / `Anthropic` を切り替えられます。
 
 ### Ollama
 
@@ -486,6 +486,35 @@ llm:
 export GEMINI_API_KEY=your_api_key_here
 ```
 
+### Codex CLI
+
+```yaml
+llm:
+  provider: codex
+  model: gpt-5
+  timeout_sec: 180
+  command: codex
+  sandbox: read-only
+  skip_git_repo_check: true
+```
+
+`codex exec` を非対話で呼んで返答本文だけを受け取ります。`codex` コマンドが `PATH` に通っている前提です。
+
+### Gemini CLI
+
+```yaml
+llm:
+  provider: gemini_cli
+  model: gemini-2.5-flash
+  timeout_sec: 180
+  command: gemini
+  approval_mode: plan
+  output_format: text
+  skip_trust: true
+```
+
+`gemini --prompt` を headless 実行して返答を受け取ります。`gemini` コマンドが `PATH` に通っている前提です。
+
 ### OpenAI
 
 ```yaml
@@ -516,6 +545,51 @@ llm:
 ```bash
 export ANTHROPIC_API_KEY=your_api_key_here
 ```
+
+## 画像認識 CLI
+
+画像を 1 枚以上渡して内容説明させる CLI を追加しています。
+
+```bash
+cd <repo-root>
+python3 tools/vision_analyze.py .runtime/samples/sample.png --prompt "この画像を説明して"
+```
+
+複数画像も可能です。
+
+```bash
+cd <repo-root>
+python3 tools/vision_analyze.py img1.jpg img2.jpg --prompt "2枚の共通点と違いを説明して"
+```
+
+現在の `llm.provider` を使って実行します。画像入力対応は次の通りです。
+
+- `ollama`
+- `codex`
+- `gemini`
+- `openai`
+- `anthropic`
+
+`gemini_cli` はこの統合では画像添付に未対応です。
+
+## テスト
+
+標準ライブラリの `unittest` だけで回せる、本番近似の LLM/CLI テストを用意しています。
+
+```bash
+cd <repo-root>
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+このテストでは次を確認します。
+
+- `codex` backend の non-interactive 実行
+- `gemini_cli` backend の non-interactive 実行
+- `ollama` / `openai` HTTP payload
+- 画像入力つきの LLM 呼び出し
+- `tools/vision_analyze.py` の CLI 経路
+
+外部 API や本物の CLI には依存せず、ローカルの fake server / fake command で本番に近い I/O を通します。
 
 ## ローカル処理と SSH オフロード処理の違い
 
@@ -996,6 +1070,10 @@ cd <repo-root>
 - `*_bg.log`
 - `events.jsonl`
 - `voicechat.db`
+- `benchmark_results/`
+- `test_audio_suite/`
+- `samples/`
+- `archives/`
 
 文字起こしの保存形式は、最低限次を持つようにしています。
 

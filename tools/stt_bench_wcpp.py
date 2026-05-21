@@ -3,9 +3,15 @@
 import subprocess, time, re, os, json, threading, argparse
 from pathlib import Path
 from datetime import datetime
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "benchmark_results"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+
+RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMPTS = {
@@ -93,8 +99,8 @@ def run_wcpp(model, threads, prompt, wav):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--audio", default="/home/kennypi/data/audio/music/テイキョウヘイセイダイガク.mp3")
-    p.add_argument("--ref", default="/home/kennypi/data/audio/music/teikyoheiseidaigaku.txt")
+    p.add_argument("--audio", default=str(SAMPLES_DIR / "テイキョウヘイセイダイガク.mp3"))
+    p.add_argument("--ref", default=str(SAMPLES_DIR / "teikyoheiseidaigaku.txt"))
     args = p.parse_args()
 
     wav_in = Path(args.audio).expanduser()

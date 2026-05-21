@@ -1,0 +1,20 @@
+[Unit]
+Description=voicechat web console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kennypi/work/voicechat
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+Environment=VOICECHAT_RUNNER=auto
+Environment=VOICECHAT_REQUIREMENTS_CHECK=0
+ExecStart=/home/kennypi/work/voicechat/voicechat.sh web-console --host 0.0.0.0 --port 8787
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

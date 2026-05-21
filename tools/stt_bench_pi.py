@@ -6,9 +6,15 @@ whisper.cpp ベンチマーク + ラズパイ温度監視 + 複数音声対応
 import subprocess, time, re, os, json, threading, argparse
 from pathlib import Path
 from datetime import datetime
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "benchmark_results"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import BENCHMARK_RESULTS_DIR
+
+RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMP_WARNING = 70

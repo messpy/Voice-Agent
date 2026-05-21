@@ -19,9 +19,15 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "benchmark_results"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+
+RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -323,8 +329,8 @@ def run_single(pattern: dict, wav: Path, lyrics: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="STT 完全ベンチマーク")
-    parser.add_argument("--audio", type=Path, default=Path("/home/kennypi/data/audio/music/テイキョウヘイセイダイガク.mp3"))
-    parser.add_argument("--ref", type=Path, default=Path("/home/kennypi/data/audio/music/teikyoheiseidaigaku.txt"))
+    parser.add_argument("--audio", type=Path, default=SAMPLES_DIR / "テイキョウヘイセイダイガク.mp3")
+    parser.add_argument("--ref", type=Path, default=SAMPLES_DIR / "teikyoheiseidaigaku.txt")
     parser.add_argument("--quick", action="store_true", help="代表パターンのみ")
     args = parser.parse_args()
 

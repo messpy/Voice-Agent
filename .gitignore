@@ -4,11 +4,14 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.moonshine-venv/
+.moonshine-pi-venv/
 .env
 .env.local
 
 # Runtime outputs
 logs/
+benchmark_results/
 *.log
 *.wav
 *.db
@@ -27,15 +30,23 @@ out.txt
 # Runtime state and temporary artifacts
 runtime_state.json
 .runtime/
+.cache/
+.tmp/
+.agents/
+.codex/
 
 # Local speech assets and extracted binaries
 piper/
 piper_tts/
 piper_bin/
 piper_tts_new/
+data/
+test_audio_suite/
 vosk-model-ja
+vosk-model-ja-0.22/
 
 # Large model archives and binaries
 *.onnx
 *.ort
 *.tar.gz
+*.zip
