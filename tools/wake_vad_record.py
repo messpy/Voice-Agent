@@ -1230,8 +1230,10 @@ def build_ai_alias_map(ai_control_cfg: dict) -> dict[str, dict]:
 
 def apply_ai_alias(llm_cfg: dict, alias_cfg: dict) -> dict:
     updated = dict(llm_cfg)
-    updated["provider"] = str(alias_cfg["provider"])
-    updated["model"] = str(alias_cfg["model"])
+    for key, value in alias_cfg.items():
+        if key in {"alias", "help_label", "pull_command"}:
+            continue
+        updated[key] = value
     return updated
 
 

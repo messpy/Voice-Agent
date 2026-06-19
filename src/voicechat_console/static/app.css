@@ -186,6 +186,48 @@ h1 {
   align-items: center;
 }
 
+.panel-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.panel-summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-summary .panel-header {
+  grid-template-columns: 1fr auto auto;
+}
+
+.panel-body-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(33, 77, 94, 0.08);
+  color: var(--ink-blue);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.panel-events:not([open]) .panel-toggle::before {
+  content: "+";
+}
+
+.panel-events[open] .panel-toggle::before {
+  content: "−";
+}
+
 .panel-title {
   gap: 4px;
 }

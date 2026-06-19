@@ -9,9 +9,11 @@ import sqlite3
 import subprocess
 import sys
 import time
+import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Timer
 from urllib.parse import parse_qs, urlparse
 
 import yaml
@@ -183,6 +185,15 @@ def build_ai_alias_map(ai_control_cfg: dict) -> dict[str, dict]:
     return items
 
 
+def apply_ai_alias_to_config(llm_cfg: dict, alias_cfg: dict) -> dict:
+    updated = copy.deepcopy(llm_cfg)
+    for key, value in alias_cfg.items():
+        if key in {"alias", "help_label", "pull_command"}:
+            continue
+        updated[key] = value
+    return updated
+
+
 def save_config_object(cfg: dict) -> dict:
     return save_config_yaml(dump_cfg(cfg))
 
@@ -331,8 +342,10 @@ def handle_internal_command(command_hit: dict, cfg: dict, state: dict) -> dict:
                 "reply": "そのAI設定は見つからないのだ。",
             }
         updated = copy.deepcopy(cfg)
-        updated.setdefault("llm", {})["provider"] = str(alias_cfg["provider"])
-        updated.setdefault("llm", {})["model"] = str(alias_cfg["model"])
+        updated["llm"] = apply_ai_alias_to_config(
+            updated.setdefault("llm", {}),
+            alias_cfg,
+        )
         save_info = save_config_object(updated)
         reply = f"AIを {alias_cfg['provider']} の {alias_cfg['model']} に保存したのだ。"
         if running:
@@ -644,13 +657,52 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Serve the voicechat web console.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument(
+        "--open-browser",
+        dest="open_browser",
+        action="store_true",
+        help="Open the web console in a browser after startup.",
+    )
+    parser.add_argument(
+        "--no-open-browser",
+        dest="open_browser",
+        action="store_false",
+        help="Do not open the web console in a browser after startup.",
+    )
+    parser.set_defaults(open_browser=None)
     return parser
+
+
+def should_open_browser(host: str, open_browser: bool | None) -> bool:
+    if open_browser is not None:
+        return open_browser
+    normalized = host.strip().lower()
+    return normalized in {"127.0.0.1", "localhost", "::1"}
+
+
+def schedule_browser_open(url: str) -> None:
+    def _open() -> None:
+        try:
+            opened = webbrowser.open(url, new=2)
+        except Exception as exc:
+            print(f"WARN: failed to open browser automatically: {exc}", file=sys.stderr)
+            return
+        if not opened:
+            print(
+                f"WARN: browser was not opened automatically. Open {url} manually.",
+                file=sys.stderr,
+            )
+
+    Timer(0.3, _open).start()
 
 
 def main() -> int:
     args = build_parser().parse_args()
     server = ThreadingHTTPServer((args.host, args.port), ConsoleHandler)
-    print(f"INFO: voicechat web console listening on http://{args.host}:{args.port}")
+    url = f"http://{args.host}:{args.port}"
+    print(f"INFO: voicechat web console listening on {url}")
+    if should_open_browser(args.host, args.open_browser):
+        schedule_browser_open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

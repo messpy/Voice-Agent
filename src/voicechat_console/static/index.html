@@ -86,23 +86,33 @@
       </section>
 
       <section class="workspace">
-        <article class="panel panel-catalog">
-          <div class="panel-header">
-            <div class="panel-title">
-              <h2>登録 command 一覧</h2>
-              <span class="panel-note">`command_router.commands` の中身</span>
+        <details class="panel panel-catalog">
+          <summary class="panel-summary">
+            <div class="panel-header">
+              <div class="panel-title">
+                <h2>登録 command 一覧</h2>
+                <span class="panel-note">`command_router.commands` の中身</span>
+              </div>
+              <span class="panel-toggle" aria-hidden="true"></span>
             </div>
+          </summary>
+          <div class="panel-body-header">
             <button id="reloadCatalogButton" class="button ghost" type="button">再読込</button>
           </div>
           <div id="commandCatalog" class="table"></div>
-        </article>
+        </details>
 
-        <article class="panel panel-events">
-          <div class="panel-header">
-            <div class="panel-title">
-              <h2>command ログ</h2>
-              <span class="panel-note">クリックで詳細を開く</span>
+        <details class="panel panel-events">
+          <summary class="panel-summary">
+            <div class="panel-header">
+              <div class="panel-title">
+                <h2>command ログ</h2>
+                <span class="panel-note">必要なときだけ開く履歴</span>
+              </div>
+              <span class="panel-toggle" aria-hidden="true"></span>
             </div>
+          </summary>
+          <div class="panel-body-header">
             <label class="inline-field">
               <span>種類</span>
               <select id="eventType">
@@ -114,15 +124,20 @@
             </label>
           </div>
           <div id="eventsTable" class="table"></div>
-        </article>
+        </details>
       </section>
 
       <section class="workspace">
-        <article class="panel panel-add">
-          <div class="panel-title">
-            <h2>command を追加</h2>
-            <span class="panel-note">まずは `external_cli` 用の標準 command を追加</span>
-          </div>
+        <details class="panel panel-add">
+          <summary class="panel-summary">
+            <div class="panel-header">
+              <div class="panel-title">
+                <h2>command を追加</h2>
+                <span class="panel-note">まずは `external_cli` 用の標準 command を追加</span>
+              </div>
+              <span class="panel-toggle" aria-hidden="true"></span>
+            </div>
+          </summary>
           <form id="catalogForm" class="stack">
             <label class="field">
               <span>ID</span>
@@ -151,19 +166,24 @@
             <button class="button" type="submit">登録する</button>
           </form>
           <pre id="catalogResult" class="output"></pre>
-        </article>
+        </details>
 
-        <article class="panel panel-config">
-          <div class="panel-header">
-            <div class="panel-title">
-              <h2>config</h2>
-              <span class="panel-note">`config/config.yaml` を直接編集</span>
+        <details class="panel panel-config">
+          <summary class="panel-summary">
+            <div class="panel-header">
+              <div class="panel-title">
+                <h2>config</h2>
+                <span class="panel-note">`config/config.yaml` を直接編集</span>
+              </div>
+              <span class="panel-toggle" aria-hidden="true"></span>
             </div>
+          </summary>
+          <div class="panel-body-header">
             <button id="saveConfigButton" class="button ghost" type="button">保存</button>
           </div>
           <textarea id="configEditor" class="editor" spellcheck="false"></textarea>
           <pre id="configResult" class="output"></pre>
-        </article>
+        </details>
       </section>
     </main>
     <script src="/app.js"></script>

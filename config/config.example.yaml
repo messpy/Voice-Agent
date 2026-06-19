@@ -374,10 +374,23 @@ assistant:
 
 ai_control:
   aliases:
-    - alias: ollama_kimi
+    - alias: ollama_local
       provider: ollama
       model: gpt-oss:120b-cloud
-    - alias: gemini_flash
+    - alias: codex_cli
+      provider: codex
+      model: gpt-5
+      command: codex
+      sandbox: read-only
+      skip_git_repo_check: true
+    - alias: gemini_cli
+      provider: gemini_cli
+      model: gemini-2.5-flash
+      command: gemini
+      approval_mode: plan
+      output_format: text
+      skip_trust: true
+    - alias: gemini_flash_api
       provider: gemini
       model: gemini-2.5-flash
     - alias: openai_gpt5mini
@@ -927,7 +940,16 @@ command_router:
         - ollamaにして
       reply: ""
       action_type: internal_set_model_alias
-      ai_alias: ollama_kimi
+      ai_alias: ollama_local
+    - id: switch_ai_codex
+      help_enabled: false
+      help_label: "AIをCodexにして"
+      phrases:
+        - aiをcodexにして
+        - codexにして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: codex_cli
     - id: switch_ai_gemini
       help_enabled: false
       help_label: "AIをGeminiにして"
@@ -936,7 +958,7 @@ command_router:
         - geminiにして
       reply: ""
       action_type: internal_set_model_alias
-      ai_alias: gemini_flash
+      ai_alias: gemini_cli
     - id: switch_ai_openai
       help_enabled: false
       help_label: "AIをOpenAIにして"
