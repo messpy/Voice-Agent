@@ -12,6 +12,7 @@ dependencies = [
     "soundfile>=0.13.1",
     "SpeechRecognition>=3.10.4",
     "localagent>=0.1.0",
+    "localaudio>=0.1.0",
     "vosk>=0.3.45",
     "webrtcvad>=2.0.10",
 ]
@@ -32,3 +33,4 @@ members = [
 
 [tool.uv.sources]
 localagent = { path = "vendor/localagent" }
+localaudio = { path = "vendor/localaudio" }

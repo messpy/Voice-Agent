@@ -9,8 +9,8 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-from localagent.recorder import record_wav as shared_record_wav
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.recorder import record_wav as shared_record_wav
+from localaudio.whisper_runner import whisper_cpp_transcribe
 from localagent.config_loader import load_cfg, ensure
 
 def which(name: str) -> str | None:

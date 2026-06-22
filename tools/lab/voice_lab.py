@@ -7,8 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from localagent.recorder import record_wav as shared_record_wav
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.recorder import record_wav as shared_record_wav
+from localaudio.whisper_runner import whisper_cpp_transcribe
 
 # ----------------------------
 # Utils

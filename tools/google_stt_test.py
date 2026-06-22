@@ -4,7 +4,7 @@ import argparse
 import time
 from pathlib import Path
 
-from localagent.recorder import record_wav as shared_record_wav
+from localaudio.recorder import record_wav as shared_record_wav
 from tools.google_stt import transcribe_google
 
 

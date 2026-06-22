@@ -37,7 +37,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from localagent.runtime_layout import BENCHMARK_RESULTS_DIR
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.whisper_runner import whisper_cpp_transcribe
 
 CFG = ROOT / "config" / "whisper_models.yaml"
 

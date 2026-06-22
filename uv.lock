@@ -444,6 +444,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "localaudio"
+version = "0.1.0"
+source = { directory = "vendor/localaudio" }
+dependencies = [
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", specifier = ">=2.32.5" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1089,6 +1104,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "localagent" },
+    { name = "localaudio" },
     { name = "numpy" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1112,6 +1128,7 @@ wake = [
 requires-dist = [
     { name = "google-cloud-speech", marker = "extra == 'google-stt'", specifier = ">=2.27.0" },
     { name = "localagent", directory = "vendor/localagent" },
+    { name = "localaudio", directory = "vendor/localaudio" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pvporcupine", marker = "extra == 'wake'" },
     { name = "pyyaml", specifier = ">=6.0.2" },

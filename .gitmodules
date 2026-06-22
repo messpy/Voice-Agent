@@ -2,3 +2,7 @@
 	path = vendor/localagent
 	url = /mnt/ssd/gittea/git/repositories/every_holiday/shared_voice_ai.git
 	branch = main
+[submodule "vendor/localaudio"]
+	path = vendor/localaudio
+	url = /mnt/ssd/gittea/git/repositories/every_holiday/shared_voice_audio.git
+	branch = main

@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from localagent.runtime_layout import BENCHMARK_RESULTS_DIR
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.whisper_runner import whisper_cpp_transcribe
 
 RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

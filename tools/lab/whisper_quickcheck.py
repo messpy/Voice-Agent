@@ -3,8 +3,8 @@ import sys
 import time
 from pathlib import Path
 
-from localagent.recorder import record_wav
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.recorder import record_wav
+from localaudio.whisper_runner import whisper_cpp_transcribe
 
 def die(msg: str, code: int = 1):
     print(msg, file=sys.stderr)

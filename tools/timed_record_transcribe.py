@@ -11,9 +11,9 @@ from pathlib import Path
 
 import requests
 import yaml
-from localagent.audio_preprocess import prepare_whisper_audio
+from localaudio.audio_preprocess import prepare_whisper_audio
 from localagent.llm_api import resolve_llm_config
-from localagent.whisper_runner import whisper_cpp_transcribe
+from localaudio.whisper_runner import whisper_cpp_transcribe
 from localagent.transcript_correction import build_transcript_correction_context, correct_transcript
 
 
