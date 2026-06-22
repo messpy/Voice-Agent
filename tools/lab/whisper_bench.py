@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from localaudio.recorder import record_wav as shared_record_wav
+from voiceaudio.recorder import record_wav as shared_record_wav
 
 TMP = Path("/tmp/voice_bench")
 TMP.mkdir(parents=True, exist_ok=True)

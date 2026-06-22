@@ -3,8 +3,8 @@ from pathlib import Path
 import sys
 import yaml
 
-from localaudio.recorder import record_wav
-from localaudio.whisper_runner import whisper_cpp_transcribe
+from voiceaudio.recorder import record_wav
+from voiceaudio.whisper_runner import whisper_cpp_transcribe
 
 ROOT = Path(__file__).resolve().parents[2]
 

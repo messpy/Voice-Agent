@@ -19,13 +19,13 @@ from typing import Any
 import requests
 import soundfile as sf
 import webrtcvad
-from localaudio.audio_preprocess import prepare_whisper_audio
-from localagent.config_loader import load_cfg
-from localagent.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
-from localagent.runtime_files import write_json_atomic
-from localaudio.whisper_runner import whisper_cpp_transcribe
-from localaudio.speech_recognition_runner import speech_recognition_once
-from localaudio.vosk_runner import vosk_once
+from voiceaudio.audio_preprocess import prepare_whisper_audio
+from voiceai.config_loader import load_cfg
+from voiceai.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
+from voiceai.runtime_files import write_json_atomic
+from voiceaudio.whisper_runner import whisper_cpp_transcribe
+from voiceaudio.speech_recognition_runner import speech_recognition_once
+from voiceaudio.vosk_runner import vosk_once
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -9,9 +9,9 @@ from pathlib import Path
 
 import yaml
 
-from localagent.llm_api import resolve_llm_config
-from localagent.transcript_correction import build_transcript_correction_context, correct_transcript, normalize_text
-from localaudio.whisper_runner import whisper_cpp_transcribe
+from voiceai.llm_api import resolve_llm_config
+from voiceai.transcript_correction import build_transcript_correction_context, correct_transcript, normalize_text
+from voiceaudio.whisper_runner import whisper_cpp_transcribe
 from tools.cohere_transcribe import ROOT, ffmpeg_normalize
 
 

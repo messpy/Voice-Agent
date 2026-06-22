@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from localagent.runtime_layout import BENCHMARK_RESULTS_DIR, TEST_AUDIO_SUITE_DIR
+from voiceai.runtime_layout import BENCHMARK_RESULTS_DIR, TEST_AUDIO_SUITE_DIR
 
 RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

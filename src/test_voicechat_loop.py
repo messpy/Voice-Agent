@@ -10,9 +10,9 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from localagent.config_loader import load_cfg
-from localaudio.voicechat_audio import voicechat_speak, pipo_sound, popi_sound, pi_sound
-from localaudio.vosk_runner import vosk_once
+from voiceai.config_loader import load_cfg
+from voiceaudio.voicechat_audio import voicechat_speak, pipo_sound, popi_sound, pi_sound
+from voiceaudio.vosk_runner import vosk_once
 
 LOG_FILE = Path("/tmp/voicechat_log.txt")
 WORD_MAP_FILE = Path("/tmp/voicechat_word_map.json")

@@ -22,9 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from localagent import command_runtime
-from localagent.config_loader import dump_cfg, load_cfg, resolve_config_path
-from localagent.runtime_files import atomic_write_text, read_json_file
+from voiceai import command_runtime
+from voiceai.config_loader import dump_cfg, load_cfg, resolve_config_path
+from voiceai.runtime_files import atomic_write_text, read_json_file
 
 
 STATIC_DIR = ROOT / "src" / "voicechat_console" / "static"

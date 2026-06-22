@@ -6,7 +6,7 @@ import os
 import sys
 import unittest
 
-from localagent.llm_api import llm_chat, llm_healthcheck, resolve_llm_config
+from voiceai.llm_api import llm_chat, llm_healthcheck, resolve_llm_config
 from tests.test_support import FakeLlmServer, ProdLikeEnv
 
 

@@ -25,8 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from localagent.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
-from localaudio.whisper_runner import whisper_cpp_transcribe
+from voiceai.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+from voiceaudio.whisper_runner import whisper_cpp_transcribe
 
 RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
