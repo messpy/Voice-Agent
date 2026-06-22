@@ -431,7 +431,7 @@ wheels = [
 [[package]]
 name = "localagent"
 version = "0.1.0"
-source = { directory = "/home/kennypi/work/LocalAgent" }
+source = { directory = "vendor/localagent" }
 dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
@@ -1111,7 +1111,7 @@ wake = [
 [package.metadata]
 requires-dist = [
     { name = "google-cloud-speech", marker = "extra == 'google-stt'", specifier = ">=2.27.0" },
-    { name = "localagent", directory = "/home/kennypi/work/LocalAgent" },
+    { name = "localagent", directory = "vendor/localagent" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pvporcupine", marker = "extra == 'wake'" },
     { name = "pyyaml", specifier = ">=6.0.2" },
