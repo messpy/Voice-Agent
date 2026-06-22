@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+from localagent.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+from localagent.whisper_runner import whisper_cpp_transcribe
 
 RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -124,9 +125,6 @@ def preprocess_audio(wav_in: Path, wav_out: Path, mode: str) -> None:
 # ── Whisper.cpp 実行 ─────────────────────────────────────────────
 
 def run_whisper_cpp(wav: Path, model: str, threads: int, prompt: str, beam: int = 5) -> dict:
-    env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = str(ROOT / "whisper.cpp" / "build" / "src") + ":" + str(ROOT / "whisper.cpp" / "build" / "ggml" / "src")
-
     model_map = {
         "tiny": ".runtime/models/ggml-tiny.bin",
         "base": ".runtime/models/ggml-base.bin",
@@ -135,36 +133,18 @@ def run_whisper_cpp(wav: Path, model: str, threads: int, prompt: str, beam: int 
     model_path = ROOT / model_map[model]
     if not model_path.exists():
         return {"error": f"モデル未: {model_path}"}
-
-    cmd = [
-        str(ROOT / "whisper.cpp" / "build" / "bin" / "whisper-cli"),
-        "-m", str(model_path), "-f", str(wav), "-l", "ja", "-t", str(threads),
-        "--no-timestamps", "--beam-size", str(beam), "--temperature", "0.0",
-    ]
-    if prompt:
-        cmd += ["--prompt", prompt]
-
-    t0 = time.time()
-    p = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(ROOT))
-    elapsed = time.time() - t0
-
-    combined = p.stdout + "\n" + p.stderr
-    combined = combined.split("whisper_print_timings:", 1)[0]
-    lines = []
-    for line in combined.splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        if any(k in s.lower() for k in ["whisper_", "system_info:", "main:", "n_threads",
-                                         "whisper_init", "whisper_model_load", "whisper_backend",
-                                         "whisper_init_state", "compute buffer", "kv ", "adding ",
-                                         "loading model", "model size"]):
-            continue
-        s = re.sub(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*", "", s)
-        if re.search(r"[ぁ-んァ-ン一-龯A-Za-z0-9]", s):
-            lines.append(s)
-
-    text = normalize(" ".join(lines))
+    extra_args = ["--prompt", prompt] if prompt else None
+    text, elapsed = whisper_cpp_transcribe(
+        whisper_bin=ROOT / "whisper.cpp" / "build" / "bin" / "whisper-cli",
+        model_path=model_path,
+        wav=wav,
+        out_prefix=Path("/tmp") / f"stt_full_bench_{model}_{threads}",
+        lang="ja",
+        threads=threads,
+        beam=beam,
+        temperature=0.0,
+        extra_args=extra_args,
+    )
     return {"text": text, "elapsed": round(elapsed, 2), "chars": len(compact(text))}
 
 

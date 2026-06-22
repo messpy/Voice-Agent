@@ -9,6 +9,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from localagent.recorder import record_wav as shared_record_wav
+
 TMP = Path("/tmp/voice_bench")
 TMP.mkdir(parents=True, exist_ok=True)
 
@@ -74,11 +76,7 @@ def extract_transcript(stdout: str) -> str:
     return normalize_text(" ".join(lines))
 
 def record_wav(audio_in: str, sec: int, out_wav: Path):
-    ensure(which("arecord"), "NG: arecord not found")
-    cmd = ["arecord", "-D", audio_in, "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", str(sec), str(out_wav)]
-    rc, out = run(cmd, capture=True)
-    if rc != 0:
-        raise RuntimeError(f"record failed: {out}")
+    shared_record_wav(out_wav, audio_in, sec, 16000, 1, "S16_LE", 0)
     return out_wav
 
 def whisper_once(wbin: str, wmodel: str, wav: Path, lang: str, args: list[str], out_log: Path):

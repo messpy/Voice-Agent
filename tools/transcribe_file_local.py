@@ -9,10 +9,10 @@ from pathlib import Path
 
 import yaml
 
-from src.llm_api import resolve_llm_config
-from src.transcript_correction import build_transcript_correction_context, correct_transcript, normalize_text
+from localagent.llm_api import resolve_llm_config
+from localagent.transcript_correction import build_transcript_correction_context, correct_transcript, normalize_text
+from localagent.whisper_runner import whisper_cpp_transcribe
 from tools.cohere_transcribe import ROOT, ffmpeg_normalize
-from tools.timed_record_transcribe import transcribe_whisper
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,13 +51,16 @@ def main() -> None:
     meta_path = out_dir / f"{args.tag}.json"
 
     ffmpeg_normalize(args.input.expanduser(), normalized_wav, {"ffmpeg": {"sample_rate": 16000, "channels": 1, "codec": "pcm_s16le"}})
-    raw_text, elapsed_sec = transcribe_whisper(
+    raw_text, elapsed_sec = whisper_cpp_transcribe(
         whisper_bin=whisper_bin,
-        whisper_model=whisper_model,
+        model_path=whisper_model,
         wav=normalized_wav,
         out_prefix=raw_prefix,
         lang=args.lang,
         threads=args.threads,
+        beam=6,
+        temperature=0.0,
+        extra_args=["-nt"],
     )
     raw_txt_path.write_text(raw_text + "\n", encoding="utf-8")
 

@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config_loader import load_cfg
-from src.llm_api import llm_chat, resolve_llm_config
+from localagent.config_loader import load_cfg
+from localagent.llm_api import llm_chat, resolve_llm_config
 
 
 DEFAULT_SYSTEM_PROMPT = (

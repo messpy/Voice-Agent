@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import webrtcvad
-from src.config_loader import load_cfg
+from localagent.config_loader import load_cfg
 
 def ensure(cond: bool, msg: str):
     if not cond:

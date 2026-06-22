@@ -9,7 +9,9 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-from src.config_loader import load_cfg, ensure
+from localagent.recorder import record_wav as shared_record_wav
+from localagent.whisper_runner import whisper_cpp_transcribe
+from localagent.config_loader import load_cfg, ensure
 
 def which(name: str) -> str | None:
     from shutil import which as _w
@@ -96,35 +98,6 @@ def play_wav(wav: Path, out_dev: str) -> None:
     cmd += [str(wav)]
     print("INFO: 再生（聞こえるか確認）...")
     sh(cmd)
-
-def whisper_cmd(wbin: str, wmodel: str, wav: Path, lang: str, threads: int, p: dict, out_prefix: Path, timestamps: bool) -> list[str]:
-    # whisper-cli 出力は -of PREFIX -otxt を使い、TEXT は PREFIX.txt を読む
-    cmd = [
-        wbin,
-        "-m", wmodel,
-        "-f", str(wav),
-        "-l", lang,
-        "-t", str(threads),
-        "-of", str(out_prefix),
-        "-otxt",
-    ]
-
-    # timestamps OFF の場合、SRT的な行を減らしたいが whisper-cli の出力形式は実装依存。
-    # ここでは transcript は txt を読んで「認識文だけ」を抽出する。
-    # パラメータ適用（壊れない組）
-    temp = float(p.get("temp", 0.0))
-    beam = int(p.get("beam", 5))
-    best = int(p.get("best", 5))
-
-    if temp == 0.0:
-        # beam search
-        cmd += ["--beam-size", str(beam)]
-        # best-of は sampling 用なので入れない（exit=10回避）
-    else:
-        # sampling
-        cmd += ["--temperature", str(temp), "--best-of", str(best), "--beam-size", "1"]
-
-    return cmd
 
 def read_transcript_txt(txt_path: Path) -> str:
     if not txt_path.exists():
@@ -217,7 +190,7 @@ def main() -> None:
     wav = rec_dir / "rec_10s_take1.wav"
     print("INFO: 録音前カウントダウン（3秒）")
     countdown(3)
-    record_wav(wav, seconds=sec, rate=rate, ch=ch, in_dev=in_dev)
+    shared_record_wav(wav, in_dev, sec, rate, ch, "S16_LE", 0)
 
     # ===== PLAYBACK (確認) =====
     print("=" * 72)
@@ -239,23 +212,26 @@ def main() -> None:
             out_txt = Path(str(prefix) + ".txt")
             out_log = log_dir / f"log_{wav.stem}__{pid}__run{run_i}.txt"
 
-            cmd = whisper_cmd(
-                wbin=wbin,
-                wmodel=wmodel,
-                wav=wav,
-                lang=lang,
-                threads=threads,
-                p=p,
-                out_prefix=prefix,
-                timestamps=timestamps,
-            )
-
             t0 = time.time()
-            rc = sh(cmd, out_log=out_log)
-            dt = time.time() - t0
-
-            # TEXT は transcript(txt) のみ
-            text = read_transcript_txt(out_txt)
+            try:
+                text, dt = whisper_cpp_transcribe(
+                    whisper_bin=Path(wbin),
+                    model_path=Path(wmodel),
+                    wav=wav,
+                    out_prefix=prefix,
+                    lang=lang,
+                    threads=threads,
+                    beam=int(p.get("beam", 5)),
+                    temperature=float(p.get("temp", 0.0)),
+                    extra_args=(["--best-of", str(int(p.get("best", 5)))] if float(p.get("temp", 0.0)) != 0.0 else None),
+                )
+                rc = 0
+            except Exception as exc:
+                rc = 1
+                dt = time.time() - t0
+                text = ""
+                out_log.write_text(str(exc), encoding="utf-8")
+            out_txt.write_text(text + "\n", encoding="utf-8")
 
             print("-" * 72)
             print(f"[{idx}/{n_total}]")

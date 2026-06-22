@@ -1,8 +1,10 @@
 import os
 import sys
 import time
-import subprocess
 from pathlib import Path
+
+from localagent.recorder import record_wav
+from localagent.whisper_runner import whisper_cpp_transcribe
 
 def die(msg: str, code: int = 1):
     print(msg, file=sys.stderr)
@@ -36,54 +38,26 @@ def main():
         print(f"INFO: {i}...")
         time.sleep(1)
 
-    # arecord: 16kHz mono
-    cmd_rec = [
-        "arecord",
-        "-D", audio_in,
-        "-d", str(rec_sec),
-        "-f", "S16_LE",
-        "-r", "16000",
-        "-c", "1",
-        str(wav),
-    ]
-    rc = subprocess.run(cmd_rec).returncode
-    if rc != 0:
-        die(f"NG: arecord failed exit={rc}")
-
-    if not wav.exists() or wav.stat().st_size == 0:
-        die("NG: recorded wav missing/empty")
-
-    # whisper: out.txt を必ず生成させる
-    # -nt: no timestamps（テキストだけ）
-    cmd_wh = [
-        str(wb),
-        "-m", str(wm),
-        "-f", str(wav),
-        "-l", lang,
-        "-nt",
-        "-otxt", "-of", str(outbase),
-    ]
-
-    # out を掃除
-    for suf in (".txt", ".json", ".srt", ".vtt"):
-        try:
-            (Path(str(outbase) + suf)).unlink()
-        except FileNotFoundError:
-            pass
-
-    rc = subprocess.run(cmd_wh).returncode
-    if rc != 0:
-        die(f"NG: whisper-cli failed exit={rc}")
-
-    txt = Path(str(outbase) + ".txt")
+    record_wav(wav, audio_in, rec_sec, 16000, 1, "S16_LE", 0)
+    text, _elapsed = whisper_cpp_transcribe(
+        whisper_bin=wb,
+        model_path=wm,
+        wav=wav,
+        out_prefix=outbase,
+        lang=lang,
+        threads=1,
+        beam=5,
+        temperature=0.0,
+        extra_args=["-nt"],
+    )
     print("===== TRANSCRIPT =====")
-    if txt.exists() and txt.stat().st_size > 0:
-        print(txt.read_text(encoding="utf-8", errors="replace").strip())
+    if text:
+        print(text)
     else:
         print("(no transcript)")
     print("======================")
     print(f"OK: WAV={wav}")
-    print(f"OK: TXT={txt}")
+    print(f"OK: TXT={outbase}.txt")
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LOCALAGENT_APP_ROOT="${LOCALAGENT_APP_ROOT:-$ROOT}"
 
 if [[ -f "$ROOT/.env" ]]; then
   set -a

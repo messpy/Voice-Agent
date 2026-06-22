@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config_loader import load_cfg, resolve_config_path
-from src.runtime_files import read_json_file
+from localagent.config_loader import load_cfg, resolve_config_path
+from localagent.runtime_files import read_json_file
 
 DEFAULT_CONFIG = resolve_config_path()
 

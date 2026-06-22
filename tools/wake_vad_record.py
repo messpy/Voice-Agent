@@ -19,12 +19,13 @@ from typing import Any
 import requests
 import soundfile as sf
 import webrtcvad
-from src.audio_preprocess import prepare_whisper_audio
-from src.config_loader import load_cfg
-from src.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
-from src.runtime_files import write_json_atomic
-from src.speech_recognition_runner import speech_recognition_once
-from src.vosk_runner import vosk_once
+from localagent.audio_preprocess import prepare_whisper_audio
+from localagent.config_loader import load_cfg
+from localagent.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
+from localagent.runtime_files import write_json_atomic
+from localagent.whisper_runner import whisper_cpp_transcribe
+from localagent.speech_recognition_runner import speech_recognition_once
+from localagent.vosk_runner import vosk_once
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -706,44 +707,19 @@ def whisper_transcribe_txt(
     temp: float,
 ) -> str:
     outbase = wav.parent / "out"
-    txt = Path(str(outbase) + ".txt")
-    whisper_env = whisper_env_for_bin(whisper_bin)
     prepared_wav = prepare_whisper_audio(wav, Path(str(outbase) + "_input.wav"))
-
-    for suf in (".txt", ".json", ".srt", ".vtt"):
-        try:
-            Path(str(outbase) + suf).unlink()
-        except FileNotFoundError:
-            pass
-
-    cmd = [
-        str(whisper_bin),
-        "-m",
-        str(whisper_model),
-        "-f",
-        str(prepared_wav),
-        "-l",
-        lang,
-        "-t",
-        str(threads),
-        "-bs",
-        str(beam),
-        "-bo",
-        str(best),
-        "-tp",
-        str(temp),
-        "-nt",
-        "-otxt",
-        "-of",
-        str(outbase),
-    ]
-    rc = run(cmd, env=whisper_env).returncode
-    if rc != 0:
-        return ""
-
-    if txt.exists() and txt.stat().st_size > 0:
-        return normalize_text(txt.read_text(encoding="utf-8", errors="replace"))
-    return ""
+    text, _elapsed = whisper_cpp_transcribe(
+        whisper_bin=whisper_bin,
+        model_path=whisper_model,
+        wav=prepared_wav,
+        out_prefix=outbase,
+        lang=lang,
+        threads=threads,
+        beam=beam,
+        temperature=temp,
+        extra_args=["-bo", str(best), "-nt"],
+    )
+    return normalize_text(text) if text else ""
 
 
 def normalize_text(text: str) -> str:
@@ -2065,19 +2041,6 @@ def judge_phrase_result(llm_cfg: dict, expected_text: str, recognized_text: str)
     if "MISMATCH" in verdict:
         return "MISMATCH"
     return "UNKNOWN"
-
-
-def whisper_env_for_bin(whisper_bin: Path) -> dict[str, str]:
-    env = dict(os.environ)
-    lib_dirs = [
-        whisper_bin.parent.parent / "src",
-        whisper_bin.parent.parent / "ggml" / "src",
-    ]
-    existing = [str(path) for path in lib_dirs if path.exists()]
-    if existing:
-        current = env.get("LD_LIBRARY_PATH", "")
-        env["LD_LIBRARY_PATH"] = ":".join(existing + ([current] if current else []))
-    return env
 
 
 def contains_wake(

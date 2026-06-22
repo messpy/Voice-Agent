@@ -1,31 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
-import sys
 import time
 from pathlib import Path
 
+from localagent.recorder import record_wav as shared_record_wav
 from tools.google_stt import transcribe_google
 
 
 def record_wav(target: Path, seconds: int, device: str) -> None:
-    cmd = [
-        "arecord",
-        "-D",
-        device,
-        "-f",
-        "S16_LE",
-        "-r",
-        "16000",
-        "-c",
-        "1",
-        "-d",
-        str(seconds),
-        str(target),
-    ]
-    print("Recording", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    shared_record_wav(target, device, seconds, 16000, 1, "S16_LE", 0)
 
 
 def parse_args() -> argparse.Namespace:

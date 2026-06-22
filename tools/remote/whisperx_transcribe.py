@@ -7,7 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from src.llm_api import llm_chat
+from localagent.llm_api import llm_chat
 
 
 def normalize_text(text: str) -> str:

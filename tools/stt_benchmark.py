@@ -36,7 +36,8 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.runtime_layout import BENCHMARK_RESULTS_DIR
+from localagent.runtime_layout import BENCHMARK_RESULTS_DIR
+from localagent.whisper_runner import whisper_cpp_transcribe
 
 CFG = ROOT / "config" / "whisper_models.yaml"
 
@@ -94,56 +95,17 @@ def transcribe_whisper_cpp(
     threads: int,
 ) -> tuple[str, float]:
     """whisper-cli で文字起こし"""
-    # 共有ライブラリのパスを設定
-    env = os.environ.copy()
-    lib_dirs = [
-        whisper_bin.parent.parent / "src",
-        whisper_bin.parent.parent / "ggml" / "src",
-    ]
-    existing_dirs = [str(d) for d in lib_dirs if d.exists()]
-    if existing_dirs:
-        current_ld = env.get("LD_LIBRARY_PATH", "")
-        env["LD_LIBRARY_PATH"] = ":".join(existing_dirs + ([current_ld] if current_ld else []))
-
-    cmd = [
-        str(whisper_bin),
-        "-m", str(model_path),
-        "-f", str(wav),
-        "-l", lang,
-        "-t", str(threads),
-        "-of", str(out_prefix),
-        "-otxt",
-        "--no-timestamps",
-        "--beam-size", "5",
-        "--temperature", "0.0",
-    ]
-    t0 = time.perf_counter()
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-    elapsed = time.perf_counter() - t0
-
-    # テキスト抽出
-    txt_path = Path(str(out_prefix) + ".txt")
-    # stdout + stderr を結合して解析
-    combined_output = proc.stdout + "\n" + proc.stderr
-    if txt_path.exists():
-        raw = txt_path.read_text(errors="replace")
-        raw = raw.split("whisper_print_timings:", 1)[0]
-        raw = re.sub(r"^output_txt:.*$", "", raw, flags=re.M)
-        lines = []
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            line = re.sub(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*", "", line)
-            if any(k in line for k in ["whisper_model_load", "system_info", "main:"]):
-                continue
-            lines.append(line)
-        text = normalize_text(" ".join(lines))
-    else:
-        # stdout/stderr から抽出
-        # --no-timestamps の場合、認識結果がstderrの末尾に1行で出力される
-        text = _extract_whisper_text_from_output(combined_output)
-    return text, round(elapsed, 3)
+    text, elapsed = whisper_cpp_transcribe(
+        whisper_bin=whisper_bin,
+        model_path=model_path,
+        wav=wav,
+        out_prefix=out_prefix,
+        lang=lang,
+        threads=threads,
+        beam=5,
+        temperature=0.0,
+    )
+    return text, elapsed
 
 
 def _extract_whisper_text_from_output(output: str) -> str:

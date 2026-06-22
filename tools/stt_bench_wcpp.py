@@ -9,7 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+from localagent.runtime_layout import BENCHMARK_RESULTS_DIR, SAMPLES_DIR
+from localagent.whisper_runner import whisper_cpp_transcribe
 
 RESULTS_DIR = BENCHMARK_RESULTS_DIR
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -73,29 +74,21 @@ def stop_mon(t):
     }
 
 def run_wcpp(model, threads, prompt, wav):
-    env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = str(ROOT/"whisper.cpp"/"build"/"src") + ":" + str(ROOT/"whisper.cpp"/"build"/"ggml"/"src")
     model_path = ROOT / f".runtime/models/ggml-{model}.bin"
     if not model_path.exists():
         return {"error": f"モデルなし: {model_path}"}
-    cmd = [str(ROOT/"whisper.cpp"/"build"/"bin"/"whisper-cli"), "-m", str(model_path),
-           "-f", str(wav), "-l", "ja", "-t", str(threads),
-           "--no-timestamps", "--beam-size", "5", "--temperature", "0.0"]
-    if prompt:
-        cmd += ["--prompt", prompt]
-    t0 = time.time()
-    p = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(ROOT))
-    elapsed = time.time() - t0
-    combined = (p.stdout + "\n" + p.stderr).split("whisper_print_timings:", 1)[0]
-    lines = []
-    for line in combined.splitlines():
-        s = line.strip()
-        if not s: continue
-        if any(k in s.lower() for k in ["whisper_", "system_info:", "main:", "n_threads",
-            "whisper_init", "whisper_model_load", "compute buffer", "kv "]): continue
-        s = re.sub(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*", "", s)
-        if re.search(r"[ぁ-んァ-ン一-龯A-Za-z0-9]", s): lines.append(s)
-    return {"text": normalize(" ".join(lines)), "elapsed": round(elapsed, 2), "chars": 0}
+    text, elapsed = whisper_cpp_transcribe(
+        whisper_bin=ROOT/"whisper.cpp"/"build"/"bin"/"whisper-cli",
+        model_path=model_path,
+        wav=wav,
+        out_prefix=Path("/tmp") / f"stt_bench_wcpp_{model}_{threads}",
+        lang="ja",
+        threads=threads,
+        beam=5,
+        temperature=0.0,
+        extra_args=(["--prompt", prompt] if prompt else None),
+    )
+    return {"text": normalize(text), "elapsed": round(elapsed, 2), "chars": len(compact(text))}
 
 def main():
     p = argparse.ArgumentParser()

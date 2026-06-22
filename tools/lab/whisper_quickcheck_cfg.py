@@ -1,8 +1,10 @@
 import time
-import subprocess
 from pathlib import Path
 import sys
 import yaml
+
+from localagent.recorder import record_wav
+from localagent.whisper_runner import whisper_cpp_transcribe
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -54,54 +56,26 @@ def main():
         print(f"INFO: {i}...")
         time.sleep(1)
 
-    cmd_rec = [
-        "arecord",
-        "-D", audio_in,
-        "-d", str(rec_sec),
-        "-f", fmt,
-        "-r", str(sr),
-        "-c", str(ch),
-        str(wav),
-    ]
-    rc = subprocess.run(cmd_rec).returncode
-    if rc != 0:
-        die(f"NG: arecord failed exit={rc}")
-
-    if not wav.exists() or wav.stat().st_size == 0:
-        die("NG: recorded wav missing/empty")
-
-    # 既存出力掃除
-    for suf in (".txt", ".json", ".srt", ".vtt"):
-        try:
-            Path(str(outbase) + suf).unlink()
-        except FileNotFoundError:
-            pass
-
-    cmd_wh = [
-        str(wb),
-        "-m", str(wm),
-        "-f", str(wav),
-        "-l", lang,
-        "-t", str(threads),
-        "-bo", str(best),
-        "-bs", str(beam),
-        "-tp", str(temp),
-        "-nt",
-        "-otxt", "-of", str(outbase),
-    ]
-    rc = subprocess.run(cmd_wh).returncode
-    if rc != 0:
-        die(f"NG: whisper-cli failed exit={rc}")
-
-    txt = Path(str(outbase) + ".txt")
+    record_wav(wav, audio_in, rec_sec, sr, ch, fmt, 0)
+    text, _elapsed = whisper_cpp_transcribe(
+        whisper_bin=wb,
+        model_path=wm,
+        wav=wav,
+        out_prefix=outbase,
+        lang=lang,
+        threads=threads,
+        beam=beam,
+        temperature=temp,
+        extra_args=["-bo", str(best), "-nt"],
+    )
     print("===== TRANSCRIPT =====")
-    if txt.exists() and txt.stat().st_size > 0:
-        print(txt.read_text(encoding="utf-8", errors="replace").strip())
+    if text:
+        print(text)
     else:
         print("(no transcript)")
     print("======================")
     print(f"OK: WAV={wav}")
-    print(f"OK: TXT={txt}")
+    print(f"OK: TXT={outbase}.txt")
 
 if __name__ == "__main__":
     main()

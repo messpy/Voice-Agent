@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from src.llm_api import llm_chat
+from localagent.llm_api import llm_chat
 
 
 DEFAULT_RAG_GLOBS = [

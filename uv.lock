@@ -429,6 +429,21 @@ wheels = [
 ]
 
 [[package]]
+name = "localagent"
+version = "0.1.0"
+source = { directory = "/home/kennypi/work/LocalAgent" }
+dependencies = [
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", specifier = ">=2.32.5" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1073,6 +1088,7 @@ name = "voicechat"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "localagent" },
     { name = "numpy" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1095,6 +1111,7 @@ wake = [
 [package.metadata]
 requires-dist = [
     { name = "google-cloud-speech", marker = "extra == 'google-stt'", specifier = ">=2.27.0" },
+    { name = "localagent", directory = "/home/kennypi/work/LocalAgent" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pvporcupine", marker = "extra == 'wake'" },
     { name = "pyyaml", specifier = ">=6.0.2" },

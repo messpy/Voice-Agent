@@ -7,6 +7,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from localagent.recorder import record_wav as shared_record_wav
+from localagent.whisper_runner import whisper_cpp_transcribe
+
 # ----------------------------
 # Utils
 # ----------------------------
@@ -139,12 +142,10 @@ def record_wav():
         return
 
     say(f"INFO: 録音開始: {sec}s / device={audio_in}")
-    # 16kHz mono S16_LE (whisper向け)
-    cmd = ["arecord", "-D", audio_in, "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", str(sec), str(wav)]
-    rc, out = run(cmd, capture=True)
-    if rc != 0:
-        say("NG: record failed")
-        say(out)
+    try:
+        shared_record_wav(wav, audio_in, sec, 16000, 1, "S16_LE", 0)
+    except Exception as exc:
+        say(f"NG: record failed: {exc}")
         return
     say(f"OK: RECORDED {wav} ({wav.stat().st_size} bytes)")
 
@@ -186,46 +187,39 @@ def whisper_transcribe():
     wav = wavs[idx-1]
 
     lang = ask("言語 (ja/en/auto)", "ja")
+    threads = int(ask("スレッド数", "4"))
     sec = ask("オプション: beam/best/temperature (例: 10 10 0.0)", "10 10 0.0")
     beam, best, temp = sec.split()
 
     log = TMP / f"whisper_{wav.stem}.log"
-    cmd = [
-        wb, "-m", wm, "-f", str(wav),
-        "--no-timestamps",
-        "--beam-size", str(beam),
-        "--best-of", str(best),
-        "--temperature", str(temp),
-    ]
-    if lang != "auto":
-        cmd += ["-l", lang]
-
     say("INFO: 文字起こし中...")
-    rc, out = run(cmd, capture=True)
-    log.write_text(out, encoding="utf-8")
-    if rc != 0:
+    try:
+        out, _elapsed = whisper_cpp_transcribe(
+            whisper_bin=Path(wb),
+            model_path=Path(wm),
+            wav=wav,
+            out_prefix=TMP / "voice_lab_out",
+            lang=lang,
+            threads=threads,
+            beam=int(beam),
+            temperature=float(temp),
+            extra_args=["-bo", str(best), "-nt"] if float(temp) != 0.0 else ["-nt"],
+        )
+        rc = 0
+    except Exception as exc:
+        rc = 1
+        out = ""
+        log.write_text(str(exc), encoding="utf-8")
         say(f"NG: whisper failed (exit={rc}) log={log}")
-        # 重要そうな行だけ
-        for line in out.splitlines()[-80:]:
-            if any(k in line.lower() for k in ["error", "failed", "abort", "invalid"]):
-                say(line)
         return
+    log.write_text(out, encoding="utf-8")
 
     # 結果のそれっぽい行だけ表示（日本語/英字行）
     say("----- RESULT (抜粋) -----")
-    shown = 0
-    for line in out.splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        # whisper-cli は進捗行も多いので、全文らしい行だけ拾う
-        if any(ch in s for ch in "ぁあいうえおアイウエオ一二三四五六七八九十") or (s and s[0].isalpha()):
-            if "whisper_print_timings" in s or "main:" in s:
-                continue
-            say(s)
-            shown += 1
-            if shown >= 30:
-                break
+    if out:
+        say(out)
+    else:
+        say("(no transcript)")
     say(f"OK: log={log}")
 
 def openjtalk_tts():

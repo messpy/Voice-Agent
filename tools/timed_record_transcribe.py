@@ -6,15 +6,15 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import requests
 import yaml
-from src.audio_preprocess import prepare_whisper_audio
-from src.llm_api import resolve_llm_config
-from src.transcript_correction import build_transcript_correction_context, correct_transcript
+from localagent.audio_preprocess import prepare_whisper_audio
+from localagent.llm_api import resolve_llm_config
+from localagent.whisper_runner import whisper_cpp_transcribe
+from localagent.transcript_correction import build_transcript_correction_context, correct_transcript
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,19 +34,6 @@ def load_cfg() -> dict:
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\u3000", " ")).strip()
-
-
-def whisper_env_for_bin(whisper_bin: Path) -> dict[str, str]:
-    env = dict(os.environ)
-    lib_dirs = [
-        whisper_bin.parent.parent / "src",
-        whisper_bin.parent.parent / "ggml" / "src",
-    ]
-    existing = [str(path) for path in lib_dirs if path.exists()]
-    if existing:
-        current = env.get("LD_LIBRARY_PATH", "")
-        env["LD_LIBRARY_PATH"] = ":".join(existing + ([current] if current else []))
-    return env
 
 
 def speak_voicevox(text: str, host: str, speaker: int, volume_scale: float, audio_out: str, out_wav: Path) -> None:
@@ -78,46 +65,18 @@ def speak_voicevox(text: str, host: str, speaker: int, volume_scale: float, audi
 
 
 def transcribe_whisper(whisper_bin: Path, whisper_model: Path, wav: Path, out_prefix: Path, lang: str, threads: int) -> tuple[str, float]:
-    for suffix in (".txt", ".json", ".srt", ".vtt"):
-        try:
-            Path(str(out_prefix) + suffix).unlink()
-        except FileNotFoundError:
-            pass
-
     prepared_wav = prepare_whisper_audio(wav, Path(str(out_prefix) + "_input.wav"), root=ROOT)
-    cmd = [
-        str(whisper_bin),
-        "-m",
-        str(whisper_model),
-        "-f",
-        str(prepared_wav),
-        "-l",
-        lang,
-        "-t",
-        str(threads),
-        "--beam-size",
-        "6",
-        "--best-of",
-        "6",
-        "--temperature",
-        "0.0",
-        "-nt",
-        "-otxt",
-        "-of",
-        str(out_prefix),
-    ]
-    env = whisper_env_for_bin(whisper_bin)
-    t0 = time.time()
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
-    dt = round(time.time() - t0, 3)
-    if proc.returncode != 0:
-        die(proc.stdout or f"NG: whisper failed rc={proc.returncode}")
-    txt_path = Path(str(out_prefix) + ".txt")
-    raw = txt_path.read_text(encoding="utf-8", errors="replace") if txt_path.exists() else ""
-    raw = raw.split("whisper_print_timings:", 1)[0]
-    raw = re.sub(r"^output_txt:.*$", "", raw, flags=re.M)
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    return ("\n".join(lines).strip(), dt)
+    return whisper_cpp_transcribe(
+        whisper_bin,
+        whisper_model,
+        prepared_wav,
+        out_prefix,
+        lang=lang,
+        threads=threads,
+        beam=6,
+        temperature=0.0,
+        extra_args=["-nt"],
+    )
 
 
 def process_transcript(
