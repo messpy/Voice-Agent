@@ -11,7 +11,7 @@ dependencies = [
     "setuptools<81",
     "soundfile>=0.13.1",
     "SpeechRecognition>=3.10.4",
-    "voiceai>=0.1.0",
+    "conversation_core>=0.1.0",
     "voiceaudio>=0.1.0",
     "vosk>=0.3.45",
     "webrtcvad>=2.0.10",
@@ -32,5 +32,5 @@ members = [
 ]
 
 [tool.uv.sources]
-voiceai = { path = "vendor/voiceai" }
+conversation_core = { path = "vendor/conversation_core" }
 voiceaudio = { path = "vendor/voiceaudio" }

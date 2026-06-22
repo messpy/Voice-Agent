@@ -1069,9 +1069,9 @@ wheels = [
 ]
 
 [[package]]
-name = "voiceai"
+name = "conversation_core"
 version = "0.1.0"
-source = { directory = "vendor/voiceai" }
+source = { directory = "vendor/conversation_core" }
 dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
@@ -1109,7 +1109,7 @@ dependencies = [
     { name = "setuptools" },
     { name = "soundfile" },
     { name = "speechrecognition" },
-    { name = "voiceai" },
+    { name = "conversation_core" },
     { name = "voiceaudio" },
     { name = "vosk" },
     { name = "webrtcvad" },
@@ -1135,7 +1135,7 @@ requires-dist = [
     { name = "silero-vad", marker = "extra == 'wake'" },
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "speechrecognition", specifier = ">=3.10.4" },
-    { name = "voiceai", directory = "vendor/voiceai" },
+    { name = "conversation_core", directory = "vendor/conversation_core" },
     { name = "voiceaudio", directory = "vendor/voiceaudio" },
     { name = "vosk", specifier = ">=0.3.45" },
     { name = "webrtcvad", specifier = ">=2.0.10" },
