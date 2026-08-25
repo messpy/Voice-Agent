@@ -20,9 +20,9 @@ import requests
 import soundfile as sf
 import webrtcvad
 from voiceaudio.audio_preprocess import prepare_whisper_audio
-from voiceai.config_loader import load_cfg
-from voiceai.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
-from voiceai.runtime_files import write_json_atomic
+from conversation_core.config_loader import load_cfg
+from conversation_core.llm_api import llm_chat, llm_chat_messages, llm_healthcheck, resolve_llm_config
+from conversation_core.runtime_files import write_json_atomic
 from voiceaudio.whisper_runner import whisper_cpp_transcribe
 from voiceaudio.speech_recognition_runner import speech_recognition_once
 from voiceaudio.vosk_runner import vosk_once
@@ -2894,6 +2894,8 @@ def speak_with_voicevox(
             f"device={audio_out or 'default'} out={out_wav.name}: {exc}"
         )
         raise
+    finally:
+        out_wav.unlink(missing_ok=True)
 
 
 def run_duo_mode(
@@ -3151,10 +3153,13 @@ def run_talk_mode(
             timeout_sec=record_sec,
         )
 
-        raw_text, corrected_text, elapsed_sec, model_name = transcribe_audio(
-            wav=wav_path,
-            **transcribe_kwargs,
-        )
+        try:
+            raw_text, corrected_text, elapsed_sec, model_name = transcribe_audio(
+                wav=wav_path,
+                **transcribe_kwargs,
+            )
+        finally:
+            wav_path.unlink(missing_ok=True)
         if bool(talk_mode_cfg.get("use_corrected_transcript", False)):
             user_text = normalize_transcript_text(corrected_text or raw_text)
         else:
@@ -4144,6 +4149,8 @@ def main():
         meta_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+        if not bool(timed_record_cfg.get("save_wav", False)):
+            wav_path.unlink(missing_ok=True)
         append_event_logs(
             payload=payload,
             event_type="timed_record",
@@ -4366,6 +4373,22 @@ def main():
                         wake_payload["matched_wake_word"] = matched_wake_word
                         wake_payload["music_start_shortcut"] = True
                         wake_payload["music_start_shortcut_text"] = wake_text
+                if not wake_matched:
+                    direct_command_hit = match_command(wake_text, command_router_cfg)
+                    direct_command_id = normalize_text(str((direct_command_hit or {}).get("id", "")))
+                    if direct_command_id in {"aircon_on", "aircon_dry_on", "aircon_off"}:
+                        print(f"INFO: direct command shortcut detected: {direct_command_id}")
+                        phrases = direct_command_hit.get("phrases", [])
+                        if isinstance(phrases, list) and phrases:
+                            inline_command_text = normalize_text(str(phrases[0]))
+                        else:
+                            inline_command_text = wake_text
+                        wake_matched = True
+                        matched_wake_word = f"{direct_command_id}_shortcut"
+                        wake_payload["matched"] = True
+                        wake_payload["matched_wake_word"] = matched_wake_word
+                        wake_payload["direct_command_shortcut"] = direct_command_id
+                        wake_payload["direct_command_shortcut_text"] = wake_text
 
                 if wake_payload is not None:
                     append_event_logs(
@@ -4593,11 +4616,13 @@ def main():
                             "silero": silero_gate_meta,
                         },
                     )
+                    rec_wav.unlink(missing_ok=True)
                     continue
                 play_effect("recorded", recorded_effect_cfg)
 
             if active_mode in {"debug_stt", "phrase_test"} and not heard_speech:
                 print(f"INFO: {active_mode} skip (no speech detected)")
+                rec_wav.unlink(missing_ok=True)
                 continue
 
             user_text = ""
@@ -4701,6 +4726,8 @@ def main():
                 final_prefetched_corrected_text = prefetched_corrected_text
                 final_transcribe_elapsed_sec = transcribe_elapsed_sec
                 final_transcribe_model = transcribe_model
+
+            rec_wav.unlink(missing_ok=True)
 
         user_text = normalize_transcript_text(user_text)
         prefetched_corrected_text = normalize_transcript_text(prefetched_corrected_text)
