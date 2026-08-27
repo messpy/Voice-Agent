@@ -11,7 +11,7 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 Environment=CONVERSATION_CORE_APP_ROOT=/home/kennypi/work/voicechat
 Environment=VOICECHAT_RUNNER=auto
 Environment=VOICECHAT_REQUIREMENTS_CHECK=0
-ExecStart=/home/kennypi/work/voicechat/voicechat.sh web-console --host 0.0.0.0 --port 8787
+ExecStart=/home/kennypi/work/voicechat/voicechat.sh web-console --host 127.0.0.1 --port 8787
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
