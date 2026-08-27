@@ -211,7 +211,10 @@ speech_recognition:
   engine: google
   language: ja-JP
   show_all: false
-  timeout_sec: 2.5
+  timeout_sec: 3.5
+  boost_volume: 1.0
+  fallback_to_local: true
+  fallback_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
 
 cohere_transcribe:
   enabled: false
@@ -487,7 +490,7 @@ command_router:
     outro: "スタックチャンのあとに続けて言ってほしいのだ。"
   short_input_reset_chars: 1
   short_input_reset_reply: ""
-  no_speech_timeout_sec: 2.0
+  no_speech_timeout_sec: 3.0
   no_speech_reset_reply: ""
   silero_gate:
     enabled: true

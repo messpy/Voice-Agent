@@ -2246,13 +2246,15 @@ def transcribe_speech_recognition(
     *,
     wav: Path,
     speech_recognition_cfg: dict | None = None,
-    boost_volume: float = 1.0,
+    boost_volume: float | None = None,
 ) -> tuple[str, float, str]:
     cfg = speech_recognition_cfg or {}
     engine = str(cfg.get("engine", "google")).strip() or "google"
     language = str(cfg.get("language", "ja-JP")).strip() or "ja-JP"
     show_all = bool(cfg.get("show_all", False))
     timeout_sec = float(cfg.get("timeout_sec", 2.5))
+    if boost_volume is None:
+        boost_volume = float(cfg.get("boost_volume", 1.0))
     rc, elapsed_sec, text = speech_recognition_once(
         wav=wav,
         engine=engine,
@@ -2264,6 +2266,13 @@ def transcribe_speech_recognition(
     if rc != 0:
         return text or "NG: speech_recognition error", elapsed_sec, f"speech_recognition:{engine}"
     return text, elapsed_sec, f"speech_recognition:{engine}"
+
+
+def config_bool(cfg: dict | None, key: str, default: bool = False) -> bool:
+    value = (cfg or {}).get(key, default)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def transcribe_remote(
@@ -2497,6 +2506,30 @@ def transcribe_audio(
             wav=prepared_wav,
             speech_recognition_cfg=speech_recognition_cfg,
         )
+        if (
+            config_bool(speech_recognition_cfg, "fallback_to_local", False)
+            and not normalize_text(raw_text)
+        ):
+            fallback_model = Path(
+                str((speech_recognition_cfg or {}).get("fallback_model", "")).strip()
+                or str(whisper_model)
+            )
+            fallback_text, fallback_elapsed_sec, fallback_model_name = transcribe_local(
+                whisper_bin=whisper_bin,
+                whisper_model=fallback_model,
+                wav=prepared_wav,
+                lang=lang,
+                threads=threads,
+                beam=beam,
+                best=best,
+                temp=temp,
+            )
+            return (
+                fallback_text,
+                fallback_text,
+                round(elapsed_sec + fallback_elapsed_sec, 3),
+                f"{model_name}+fallback:{fallback_model_name}",
+            )
         return raw_text, raw_text, elapsed_sec, model_name
 
     raw_text, elapsed_sec, model_name = transcribe_local(
