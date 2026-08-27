@@ -12,9 +12,9 @@ from pathlib import Path
 import requests
 import yaml
 from voiceaudio.audio_preprocess import prepare_whisper_audio
-from voiceai.llm_api import resolve_llm_config
+from conversation_core.llm_api import resolve_llm_config
 from voiceaudio.whisper_runner import whisper_cpp_transcribe
-from voiceai.transcript_correction import build_transcript_correction_context, correct_transcript
+from conversation_core.transcript_correction import build_transcript_correction_context, correct_transcript
 
 
 ROOT = Path(__file__).resolve().parents[1]

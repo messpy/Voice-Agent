@@ -22,7 +22,7 @@ echo "[CHECK] STEP=2 kennybot稼働確認" | tee -a "$LOG_FILE"
 ps aux | grep -E 'Kenny-bot|kennybot|bin/run.py|src/kennybot' | grep -v grep | tee -a "$LOG_FILE" || true
 
 echo "[CHECK] STEP=3 voicechat関連プロセス確認" | tee -a "$LOG_FILE"
-ps aux | grep -Ei 'voicechat|voice-chat|shared_voice_ai|uvicorn|fastapi|node|python' | grep -v grep | tee -a "$LOG_FILE" || true
+ps aux | grep -Ei 'voicechat|voice-chat|shared_conversation_core|uvicorn|fastapi|node|python' | grep -v grep | tee -a "$LOG_FILE" || true
 
 echo "[CHECK] STEP=4 想定状態判定 systemd service確認" | tee -a "$LOG_FILE"
 systemctl --user list-units --type=service --all | grep -Ei 'voice|chat|kenny' | tee -a "$LOG_FILE" || true

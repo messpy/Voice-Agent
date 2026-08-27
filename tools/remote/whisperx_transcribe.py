@@ -7,7 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from voiceai.llm_api import llm_chat
+from conversation_core.llm_api import llm_chat
 
 
 def normalize_text(text: str) -> str:

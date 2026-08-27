@@ -10,7 +10,7 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from voiceai.config_loader import load_cfg
+from conversation_core.config_loader import load_cfg
 from voiceaudio.voicechat_audio import voicechat_speak, pipo_sound, popi_sound, pi_sound
 from voiceaudio.vosk_runner import vosk_once
 

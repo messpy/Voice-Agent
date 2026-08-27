@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from voiceai.runtime_layout import TEST_AUDIO_SUITE_DIR
+from conversation_core.runtime_layout import TEST_AUDIO_SUITE_DIR
 
 VOICEVOX_URL = "http://127.0.0.1:50021"
 SPEAKER_ID = 3  # ずんだもん

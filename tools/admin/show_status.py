@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from voiceai.config_loader import load_cfg, resolve_config_path
-from voiceai.runtime_files import read_json_file
+from conversation_core.config_loader import load_cfg, resolve_config_path
+from conversation_core.runtime_files import read_json_file
 
 DEFAULT_CONFIG = resolve_config_path()
 

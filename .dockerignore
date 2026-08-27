@@ -1,0 +1,13 @@
+.git
+.venv
+.moonshine-venv
+.moonshine-pi-venv
+.cache
+.tmp
+.runtime
+logs
+__pycache__
+*.pyc
+config/config.yaml
+whisper.cpp/build
+whisper.cpp/models

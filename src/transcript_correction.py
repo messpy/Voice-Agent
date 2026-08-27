@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from voiceai.llm_api import llm_chat
+from conversation_core.llm_api import llm_chat
 
 
 DEFAULT_RAG_GLOBS = [

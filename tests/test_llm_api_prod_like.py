@@ -4,7 +4,7 @@ import unittest
 
 import yaml
 
-from voiceai.llm_api import llm_chat, llm_healthcheck, resolve_llm_config
+from conversation_core.llm_api import llm_chat, llm_healthcheck, resolve_llm_config
 from tests.test_support import ProdLikeEnv
 
 
