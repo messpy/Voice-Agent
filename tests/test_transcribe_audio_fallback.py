@@ -133,5 +133,39 @@ class SpeechRecognitionFallbackTests(unittest.TestCase):
         self.assertEqual(model, "speech_recognition:google+verified:/models/ggml-small.bin")
 
 
+class TranscriptCorrectionTests(unittest.TestCase):
+    def test_correct_transcript_falls_back_to_raw_text_when_llm_fails(self) -> None:
+        with patch.object(wake_vad_record, "llm_chat", side_effect=TimeoutError("slow")):
+            corrected = wake_vad_record.correct_transcript(
+                {"provider": "ollama", "model": "gemma4:latest"},
+                "でんきけして",
+            )
+
+        self.assertEqual(corrected, "でんきけして")
+
+    def test_apply_llm_profile_overrides_uses_safe_profile_values(self) -> None:
+        updated = wake_vad_record.apply_llm_profile_overrides(
+            {
+                "provider": "ollama",
+                "model": "gpt-oss:120b-cloud",
+                "timeout_sec": 300,
+                "api_key": "existing-value",
+            },
+            {
+                "llm": {
+                    "provider": "ollama",
+                    "model": "gemma4:latest",
+                    "timeout_sec": 45,
+                    "api_key": "profile-value",
+                }
+            },
+        )
+
+        self.assertEqual(updated["provider"], "ollama")
+        self.assertEqual(updated["model"], "gemma4:latest")
+        self.assertEqual(updated["timeout_sec"], 45)
+        self.assertEqual(updated["api_key"], "existing-value")
+
+
 if __name__ == "__main__":
     unittest.main()

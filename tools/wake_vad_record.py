@@ -180,6 +180,7 @@ def resolve_recognition_mode_bundle(cfg: dict) -> tuple[str, dict[str, dict], di
             or default_wake_model,
             "wake_threads": int(profile.get("wake_threads", default_wake_threads)),
             "description": normalize_text(str(profile.get("description", ""))),
+            "llm": profile.get("llm", {}) if isinstance(profile.get("llm", {}), dict) else {},
         }
         profiles[mode_name] = merged
 
@@ -196,9 +197,22 @@ def resolve_recognition_mode_bundle(cfg: dict) -> tuple[str, dict[str, dict], di
             "wake_model": default_wake_model,
             "wake_threads": default_wake_threads,
             "description": "",
+            "llm": {},
         }
         profiles[default_name] = dict(selected)
     return default_name, profiles, selected
+
+
+def apply_llm_profile_overrides(llm_cfg: dict, recognition_profile: dict) -> dict:
+    overrides = recognition_profile.get("llm", {})
+    if not isinstance(overrides, dict) or not overrides:
+        return dict(llm_cfg)
+    updated = dict(llm_cfg)
+    for key, value in overrides.items():
+        if key in {"api_key", "api_key_env"}:
+            continue
+        updated[key] = value
+    return updated
 
 
 def normalize_phrase_test_entry(item: object, idx: int) -> dict[str, str]:
@@ -1659,7 +1673,13 @@ def correct_transcript(llm_cfg: dict, raw_text: str) -> str:
         "出力は補正後の本文だけにする。"
     )
     user_prompt = f"音声認識結果:\n{raw_text}\n\n補正後テキストだけを返して。"
-    corrected = llm_chat(llm_cfg, system_prompt, user_prompt)
+    try:
+        corrected = llm_chat(llm_cfg, system_prompt, user_prompt)
+    except Exception as exc:
+        provider = str(llm_cfg.get("provider", "unknown"))
+        model = str(llm_cfg.get("model", "unknown"))
+        print(f"WARN: transcript correction failed provider={provider} model={model}: {exc}")
+        return raw_text
     return corrected or raw_text
 
 
@@ -3706,6 +3726,7 @@ def main():
     )
 
     llm_cfg = resolve_llm_config(cfg)
+    base_llm_cfg = dict(llm_cfg)
     remote_cfg = cfg.get("remote", {})
     google_cfg = cfg.get("google_stt", {})
     speech_recognition_cfg = cfg.get("speech_recognition", {})
@@ -3900,7 +3921,8 @@ def main():
             realtime_wmodel, \
             wmodel, \
             wake_wmodel, \
-            wake_threads
+            wake_threads, \
+            llm_cfg
         nonlocal runtime_state_base
 
         target_mode = normalize_text(mode_name) or recognition_mode_name
@@ -3940,6 +3962,7 @@ def main():
                 "wake_threads", wake_cfg.get("threads", max(1, min(threads, 2)))
             )
         )
+        llm_cfg = apply_llm_profile_overrides(base_llm_cfg, recognition_profile)
         runtime_state_base.update(
             {
                 "recognition_mode": recognition_mode_name,
@@ -3951,6 +3974,8 @@ def main():
                 "whisper_model": str(wmodel),
                 "whisper_realtime_model": str(realtime_wmodel),
                 "wake_model": str(wake_wmodel),
+                "llm_provider": llm_cfg.get("provider"),
+                "llm_model": llm_cfg.get("model"),
             }
         )
 

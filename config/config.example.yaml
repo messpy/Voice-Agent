@@ -40,6 +40,20 @@ recognition_profiles:
     final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
     wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
     wake_threads: 4
+  gemma4_chat:
+    label: "Gemma4補正"
+    description: "高精度Whisperの結果をGemma4で補正する試験モードなのだ。重い場合があるのだ。"
+    backend: local
+    ai_correction: true
+    realtime_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-large-v3-turbo-q5_0.bin
+    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
+    wake_threads: 4
+    llm:
+      provider: ollama
+      model: gemma4:latest
+      timeout_sec: 45
+      think: false
 
 services:
   voicevox:
@@ -383,6 +397,11 @@ ai_control:
     - alias: ollama_local
       provider: ollama
       model: gpt-oss:120b-cloud
+    - alias: ollama_gemma4
+      provider: ollama
+      model: gemma4:latest
+      timeout_sec: 45
+      think: false
     - alias: codex_cli
       provider: codex
       model: gpt-5
@@ -965,6 +984,17 @@ command_router:
       reply: ""
       action_type: internal_set_model_alias
       ai_alias: gemini_cli
+    - id: switch_ai_gemma4
+      help_enabled: false
+      help_label: "AIをGemma4にして"
+      phrases:
+        - aiをgemma4にして
+        - gemma4にして
+        - ジェンマ4にして
+        - ゲンマ4にして
+      reply: ""
+      action_type: internal_set_model_alias
+      ai_alias: ollama_gemma4
     - id: switch_ai_openai
       help_enabled: false
       help_label: "AIをOpenAIにして"
@@ -1019,3 +1049,13 @@ command_router:
       reply: ""
       action_type: internal_set_recognition_mode
       recognition_mode: precise
+    - id: recognition_mode_gemma4_chat
+      help_label: "認識モードGemma4"
+      phrases:
+        - 認識モードgemma4
+        - 認識モードジェンマ4
+        - gemma4補正にして
+        - ジェンマ4補正にして
+      reply: ""
+      action_type: internal_set_recognition_mode
+      recognition_mode: gemma4_chat
