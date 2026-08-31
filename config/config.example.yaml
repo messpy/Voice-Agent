@@ -106,8 +106,8 @@ audio_pipeline:
     sample_rate: 16000
     channels: 1
     codec: pcm_s16le
-    preset_name: compand_denoise
-    af: "afftdn=nr=14:nf=-30,highpass=f=120,lowpass=f=3800,compand=attacks=0.02:decays=0.2:points=-80/-80|-24/-10|0/-2"
+    preset_name: speech_norm_band
+    af: "highpass=f=120,lowpass=f=3800,speechnorm=e=12.5:r=0.0001:l=1"
 
 wake:
   word: "スタックチャン"
@@ -211,10 +211,13 @@ speech_recognition:
   engine: google
   language: ja-JP
   show_all: false
-  timeout_sec: 3.5
+  timeout_sec: 8.0
   boost_volume: 1.0
   fallback_to_local: true
-  fallback_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+  verify_with_local: true
+  verify_min_chars: 5
+  prefer_local_when_longer_chars: 4
+  fallback_model: /home/kennypi/work/voicechat/.runtime/models/ggml-large-v3-turbo-q5_0.bin
 
 cohere_transcribe:
   enabled: false

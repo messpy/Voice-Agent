@@ -2268,6 +2268,47 @@ def transcribe_speech_recognition(
     return text, elapsed_sec, f"speech_recognition:{engine}"
 
 
+def should_verify_speech_recognition(
+    text: str, speech_recognition_cfg: dict[str, object] | None
+) -> bool:
+    cfg = speech_recognition_cfg or {}
+    body = compact_text(normalize_text(text))
+    if not body:
+        return config_bool(cfg, "fallback_to_local", False)
+    if not config_bool(cfg, "verify_with_local", False):
+        return False
+    min_chars = max(0, int(cfg.get("verify_min_chars", cfg.get("min_text_chars", 0))))
+    if min_chars and len(body) < min_chars:
+        return True
+    return True
+
+
+def choose_speech_recognition_text(
+    speech_text: str,
+    local_text: str,
+    speech_recognition_cfg: dict[str, object] | None,
+) -> tuple[str, str]:
+    cfg = speech_recognition_cfg or {}
+    speech_body = normalize_text(speech_text)
+    local_body = normalize_text(local_text)
+    if not speech_body:
+        return local_body, "empty"
+    if not local_body:
+        return speech_body, "speech_recognition"
+
+    speech_compact = compact_text(speech_body)
+    local_compact = compact_text(local_body)
+    min_chars = max(0, int(cfg.get("verify_min_chars", cfg.get("min_text_chars", 0))))
+    if min_chars and len(speech_compact) < min_chars <= len(local_compact):
+        return local_body, "short"
+
+    prefer_margin = max(0, int(cfg.get("prefer_local_when_longer_chars", 4)))
+    if len(local_compact) >= len(speech_compact) + prefer_margin:
+        return local_body, "longer"
+
+    return speech_body, "speech_recognition"
+
+
 def config_bool(cfg: dict | None, key: str, default: bool = False) -> bool:
     value = (cfg or {}).get(key, default)
     if isinstance(value, str):
@@ -2506,10 +2547,7 @@ def transcribe_audio(
             wav=prepared_wav,
             speech_recognition_cfg=speech_recognition_cfg,
         )
-        if (
-            config_bool(speech_recognition_cfg, "fallback_to_local", False)
-            and not normalize_text(raw_text)
-        ):
+        if should_verify_speech_recognition(raw_text, speech_recognition_cfg):
             fallback_model = Path(
                 str((speech_recognition_cfg or {}).get("fallback_model", "")).strip()
                 or str(whisper_model)
@@ -2524,11 +2562,21 @@ def transcribe_audio(
                 best=best,
                 temp=temp,
             )
+            chosen_text, reason = choose_speech_recognition_text(
+                raw_text, fallback_text, speech_recognition_cfg
+            )
+            if reason == "speech_recognition":
+                return (
+                    chosen_text,
+                    chosen_text,
+                    round(elapsed_sec + fallback_elapsed_sec, 3),
+                    f"{model_name}+verified:{fallback_model_name}",
+                )
             return (
-                fallback_text,
-                fallback_text,
+                chosen_text,
+                chosen_text,
                 round(elapsed_sec + fallback_elapsed_sec, 3),
-                f"{model_name}+fallback:{fallback_model_name}",
+                f"{model_name}+fallback:{fallback_model_name}:{reason}",
             )
         return raw_text, raw_text, elapsed_sec, model_name
 
