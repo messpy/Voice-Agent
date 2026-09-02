@@ -392,6 +392,7 @@ def run(
     stdin: bytes | None = None,
     capture: bool = False,
     env: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
@@ -399,6 +400,7 @@ def run(
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
         env=env,
+        timeout=timeout,
     )
 
 
@@ -703,7 +705,12 @@ def arecord_chunk_pcm(audio_in: str, sec: float, sample_rate: int) -> bytes:
         "-t",
         "raw",
     ]
-    p = run(cmd, capture=True)
+    timeout_sec = max(2.0, float(sec) + 2.0)
+    try:
+        p = run(cmd, capture=True, timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        print(f"WARN: arecord timed out after {timeout_sec:.1f}s: {' '.join(cmd)}")
+        return b""
     if p.returncode != 0:
         err = (p.stderr or b"").decode("utf-8", errors="replace")
         die(f"NG: arecord failed exit={p.returncode}\n{err}")

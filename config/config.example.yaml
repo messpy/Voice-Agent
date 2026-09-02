@@ -15,13 +15,18 @@ runtime:
 recognition_profiles:
   balanced:
     label: "標準"
-    description: "speech_recognition で精度を優先し、wake も speech_recognition に任せるのだ。"
-    backend: speech_recognition
-    ai_correction: false
+    description: "高精度Whisperの結果をGemma4で補正する標準モードなのだ。重い場合があるのだ。"
+    backend: local
+    ai_correction: true
     realtime_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
-    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
-    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-small.bin
+    final_model: /home/kennypi/work/voicechat/.runtime/models/ggml-large-v3-turbo-q5_0.bin
+    wake_model: /home/kennypi/work/voicechat/.runtime/models/ggml-medium.bin
     wake_threads: 4
+    llm:
+      provider: ollama
+      model: gemma4:latest
+      timeout_sec: 45
+      think: false
   light_chat:
     label: "軽量チャット"
     description: "軽い認識のあとで LLM 補正を入れて会話向けに速くするのだ。"

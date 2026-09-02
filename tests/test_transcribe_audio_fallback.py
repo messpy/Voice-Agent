@@ -167,5 +167,19 @@ class TranscriptCorrectionTests(unittest.TestCase):
         self.assertEqual(updated["api_key"], "existing-value")
 
 
+class ARecordChunkTests(unittest.TestCase):
+    def test_arecord_chunk_timeout_returns_empty_pcm(self) -> None:
+        with patch.object(
+            wake_vad_record,
+            "run",
+            side_effect=wake_vad_record.subprocess.TimeoutExpired(
+                cmd=["arecord"], timeout=3.0
+            ),
+        ):
+            pcm = wake_vad_record.arecord_chunk_pcm("plughw:CARD=Device,DEV=0", 1.0, 16000)
+
+        self.assertEqual(pcm, b"")
+
+
 if __name__ == "__main__":
     unittest.main()
